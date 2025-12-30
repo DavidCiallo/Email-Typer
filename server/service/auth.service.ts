@@ -29,10 +29,7 @@ registerUser("管理员", "plumend@yeah.net", "wdc20140772");
 
 export function gentoken(email: string): string {
     const expried = Date.now() + 1000 * 60 * 60 * 24;
-    const token = [
-        email,
-        expried.toString(),
-    ].join(".");
+    const token = [email, expried.toString()].join(".");
     return aesEncrypt(token);
 }
 

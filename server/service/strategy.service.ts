@@ -1,29 +1,33 @@
 import { StrategyImpl } from "../../shared/impl";
 import { AccountEntity } from "../../shared/types/Account";
 import { StrategyEntity } from "../../shared/types/Strategy";
-import Repository from "../lib/respository";
+import Repository from "../lib/repository";
 import { sendEmail } from "./email.send";
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import fs from 'fs';
+import { exec } from "child_process";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 const strategyRepository = Repository.instance(StrategyEntity);
 const accountRepository = Repository.instance(AccountEntity);
-console.log("strategyRepository", strategyRepository);
 
 export async function getStrategyList(): Promise<StrategyEntity[]> {
     const strategies = await strategyRepository.find();
     const accounts = await accountRepository.find();
-    strategies.forEach(item => {
-        item.creater = accounts.find(item2 => item2.email === item.creater)!.name;
+    strategies.forEach((item) => {
+        item.creater = accounts.find((item2) => item2.email === item.creater)!.name;
     });
     return strategies.reverse();
 }
 
-export async function saveStrategy(email: string, forward: string, callback: string, comment: string, creater: string): Promise<boolean> {
+export async function saveStrategy(
+    email: string,
+    forward: string,
+    callback: string,
+    comment: string,
+    creater: string,
+): Promise<boolean> {
     const exist = strategyRepository.findOne({ email, creater });
     if (!forward || forward.length === 0) {
         forward = creater;
@@ -33,21 +37,7 @@ export async function saveStrategy(email: string, forward: string, callback: str
     } else {
         strategyRepository.insert({ email, forward, callback, comment, creater });
     }
-    if (!fs.existsSync(`/root/create_mail.sh`)) {
-        return true;
-    }
-    const name = email.split("@")[0];
-    try {
-        const command = `/root/create_mail.sh ${name}`;
-        const { stderr } = await execAsync(command);
-
-        if (stderr) {
-            console.error({ error: stderr });
-        }
-    } catch (error) {
-        console.error({ error });
-    }
-    const html = `<p>邮箱策略 ${email} 已更新</p><p>该邮箱的所有邮件都将通过本路径向此邮箱转发</p>`
+    const html = `<p>邮箱策略 ${email} 已更新</p><p>该邮箱的所有邮件都将通过本路径向此邮箱转发</p>`;
     sendEmail({ to: forward, subject: "邮箱策略更新", html });
     return true;
 }

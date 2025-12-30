@@ -1,8 +1,8 @@
 import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
 import { EmailImpl } from "../../../shared/impl";
-import { EmailRouter, EmailWebsocket, StrategyRouter } from "../../api/instance";
-import { Button, closeAll, Select, SelectItem } from "@heroui/react";
+import { EmailRouter, StrategyRouter } from "../../api/instance";
+import { Button, closeAll, Pagination } from "@heroui/react";
 import EmailContentModal from "./InboxContent";
 import { EmailListResponse } from "../../../shared/router/EmailRouter";
 import InboxAddStrategy from "./InboxAddStrategy";
@@ -10,12 +10,12 @@ import { StrategyBodyRequest } from "../../../shared/router/StrategyRouter";
 import { notify, toast } from "../../methods/notify";
 import InboxTable from "./InboxTable";
 import InboxList from "./InboxList";
-import { checkUserLive } from "../../methods/status";
 
 const EmailPage = () => {
     const [allEmailList, setAllEmailList] = useState<EmailImpl[]>([]);
-    const [showEmailList, setShowEmailList] = useState<EmailImpl[]>([]);
+    const [total, setTotal] = useState<number>(0);
     const [page, setPage] = useState(1);
+    const [isLoading, setIsLoading] = useState(false);
 
     const [focusEmail, setFocusEmail] = useState<EmailImpl | null>(null);
     const [isEmailContentOpen, setEmailContentOpen] = useState(false);
@@ -23,45 +23,23 @@ const EmailPage = () => {
 
     const [accountList, setAccountList] = useState<Array<string>>([]);
 
-    function setFilter(value: Array<string>) {
-        localStorage.setItem("filters", JSON.stringify(value));
-        const els = allEmailList.filter(i => value.length ? value.includes(i.to) : true);
-        setShowEmailList(els);
-    }
-
     function submitAddStrategy(body: StrategyBodyRequest) {
         StrategyRouter.requestSaveStrategy(body, () => {
             toast({
                 title: "添加成功",
                 color: "primary",
                 hideCloseButton: true,
-                endContent: (<div onClick={closeAll}>✖</div>)
+                endContent: <div onClick={closeAll}>✖</div>,
             });
             setEmailAddStrategyOpen(false);
         });
     }
 
-    // NOTE: callback hell !!!
     function renderEmail(data: EmailListResponse) {
         if (localStorage.getItem("pause") === "1") return;
-        const originEmailNum = Number(localStorage.getItem("emailNum"));
-        localStorage.setItem("emailNum", data.total.toString());
-
-        if (data.list.length > originEmailNum && originEmailNum > 0) {
-            notify();
-        }
-
-        setAllEmailList(data.list.sort((a, b) => Number(b.time) - Number(a.time)));
-        const filters = localStorage.getItem("filters");
-        if (!filters) {
-            setShowEmailList(data.list);
-            return;
-        } else {
-            const ft = JSON.parse(filters);
-            const nff = ft.length == 0;
-            const els = data.list.filter(i => (nff || ft.includes(i.to)));
-            setShowEmailList(els);
-        }
+        setTotal(data.total);
+        setAllEmailList(data.list);
+        setIsLoading(false);
 
         const accountList = Array.from(new Set(data.list.map((email) => email.to)));
         setAccountList(accountList);
@@ -70,78 +48,61 @@ const EmailPage = () => {
     useEffect(() => {
         localStorage.setItem("pause", "0");
         if (!localStorage.getItem("emailNum")) {
-            localStorage.setItem("emailNum", "0")
+            localStorage.setItem("emailNum", "0");
         }
         EmailRouter.queryEmailList({ page }, renderEmail);
-        EmailWebsocket.checkNewEmail({}, (update: boolean) => {
-            if (update) {
-                toast({ title: "新邮件到达", color: "success" })
-                notify();
-            }
-            if (page == 1) {
-                EmailRouter.queryEmailList({ page }, renderEmail);
-            }
-        });
-    }, [])
+    }, []);
 
     return (
         <div className="max-w-screen">
             <Header name="邮件列表" />
-            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6">
+            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6 pb-4">
                 <div className="flex flex-row justify-between items-center w-full py-3">
                     <div className="flex-row w-full">
-                        <Select
-                            aria-label="select"
-                            variant="bordered"
-                            selectionMode="multiple"
-                            className="w-4/5 md:w-1/3"
-                            label="筛选"
-                            size="sm"
-                            defaultSelectedKeys={
-                                JSON.parse(localStorage.getItem("filters") || "[]")
-                            }
-                            onSelectionChange={(value) => setFilter(Array.from(value).map(i => {
-                                console.log(value);
-                                return i.toString();
-                            }))}
-                        >
-                            {accountList.map((email, index) => (
-                                <SelectItem key={index}>{email}</SelectItem>
-                            ))}
-                        </Select>
+                        {!!total && (
+                            <Pagination
+                                initialPage={1}
+                                total={Math.ceil(total / 10)}
+                                onChange={(page: number) => {
+                                    setPage(page);
+                                    setIsLoading(true);
+                                    EmailRouter.queryEmailList({ page }, renderEmail);
+                                }}
+                            />
+                        )}
                     </div>
                     <Button
                         onClick={() => {
                             setEmailAddStrategyOpen(true);
                             localStorage.setItem("pause", "1");
                         }}
-                        color="primary" variant="bordered" className="text-primary"
+                        color="primary"
+                        variant="bordered"
+                        className="text-primary"
                     >
                         新建邮箱
                     </Button>
                 </div>
                 <div className="w-full hidden md:block">
                     <InboxTable
-                        emailList={showEmailList}
+                        emailList={allEmailList}
+                        isLoading={isLoading}
                         setEmailContentOpen={setEmailContentOpen}
                         setFocusEmail={setFocusEmail}
                     />
                 </div>
                 <div className="w-full block sm:hidden">
                     <InboxList
-                        emailList={showEmailList}
+                        emailList={allEmailList}
                         setEmailContentOpen={setEmailContentOpen}
                         setFocusEmail={setFocusEmail}
                     />
                 </div>
             </div>
-            {
-                focusEmail && <EmailContentModal
-                    email={focusEmail}
-                    isOpen={isEmailContentOpen}
-                    onOpenChange={setEmailContentOpen}
-                />
-            }
+
+            {focusEmail && (
+                <EmailContentModal email={focusEmail} isOpen={isEmailContentOpen} onOpenChange={setEmailContentOpen} />
+            )}
             {
                 <InboxAddStrategy
                     isOpen={isEmailAddStrategyOpen}
@@ -155,9 +116,8 @@ const EmailPage = () => {
                     }}
                 />
             }
-        </div >
-    )
+        </div>
+    );
 };
-
 
 export default EmailPage;

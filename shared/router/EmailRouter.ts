@@ -1,5 +1,5 @@
 import { EmailImpl } from "../impl";
-import { BaseRequest, BaseRouterInstance, BaseWebsocketInstance } from "../lib/decorator";
+import { BaseRequest, BaseRouterInstance } from "../lib/decorator";
 
 export class EmailRouterInstance extends BaseRouterInstance {
     base = "/api";
@@ -9,37 +9,29 @@ export class EmailRouterInstance extends BaseRouterInstance {
             name: "queryEmailList",
             path: "/list",
             method: "get",
-            handler: Function
+            handler: Function,
         },
         {
             name: "requestSendMail",
             path: "/send",
             method: "post",
-            handler: Function
+            handler: Function,
         },
-    ]
-
-    queryEmailList: (query: EmailListQuery, callback?: Function) => Promise<EmailListResponse>
-    requestSendMail: (query: EmailSenderBody, callback?: Function) => Promise<EmailSenderResponse>
-
-    constructor(inject: Function, functions?: {
-        queryEmailList: (query: EmailListQuery) => Promise<EmailListResponse>,
-        requestSendMail: (query: EmailSenderBody) => Promise<EmailSenderResponse>
-    }) { super(); inject(this, functions); }
-}
-
-export class EmailWebsocketInstance extends BaseWebsocketInstance {
-    methods = [
-        {
-            name: "checkNewEmail",
-            type: "continuous",
-            handler: Function
-        }
     ];
-    checkNewEmail: (query: {}, callback?: Function) => Promise<boolean>;
-    constructor(inject: Function, functions?: {
-        checkNewEmail: (query: {}) => Promise<boolean>,
-    }) { super(); inject(this, functions); }
+
+    queryEmailList: (query: EmailListQuery, callback?: Function) => Promise<EmailListResponse>;
+    requestSendMail: (query: EmailSenderBody, callback?: Function) => Promise<EmailSenderResponse>;
+
+    constructor(
+        inject: Function,
+        functions?: {
+            queryEmailList: (query: EmailListQuery) => Promise<EmailListResponse>;
+            requestSendMail: (query: EmailSenderBody) => Promise<EmailSenderResponse>;
+        },
+    ) {
+        super();
+        inject(this, functions);
+    }
 }
 
 export interface EmailListQuery extends BaseRequest {
@@ -70,12 +62,4 @@ export interface EmailOtpQuery extends BaseRequest {
 export interface EmailUrlQuery extends BaseRequest {
     email: string;
     keyword: string;
-}
-
-export interface EmailOtpResponse {
-    otp: string;
-}
-
-export interface EmailUrlResponse {
-    url: string;
 }
