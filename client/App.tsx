@@ -6,6 +6,7 @@ import InboxPage from './pages/inbox/InboxPage';
 import AuthPage from './pages/auth/AuthPage';
 import SenderPage from './pages/send/SendPage';
 import { autoRecordLive } from './methods/status';
+import { toast } from './methods/notify';
 
 const PrivateRoute = ({ redirectPath = '/auth' }) => {
   // 检查 localStorage 中的 token
@@ -15,6 +16,19 @@ const PrivateRoute = ({ redirectPath = '/auth' }) => {
 };
 
 const App = () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("code") == "444") {
+    // if (["WindowsWechat", "wxwork"].some(i => navigator.userAgent.includes(i))) {
+    localStorage.setItem("isWeCom", "1");
+    toast({
+      title: "您处于企业微信环境",
+      color: "success"
+    });
+    if (!localStorage.getItem("wecom_name")) {
+      localStorage.removeItem("token");
+    }
+    // }
+  }
   autoRecordLive();
   return (
     <Router>

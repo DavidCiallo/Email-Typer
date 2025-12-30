@@ -1,7 +1,7 @@
 import { LoginToken, RegisterResult } from "../../shared/router/AuthRouter";
 import { AccountEntity } from "../../shared/types/Account";
-import { aesDecrypt, aesEncrypt, hashGenerate } from "../lib/crypto";
-import Repository from "../lib/respository";
+import { aesEncrypt, hashGenerate } from "../lib/crypto";
+import Repository from "../lib/repository";
 
 const accountRepository = Repository.instance(AccountEntity);
 
@@ -15,6 +15,12 @@ export async function loginUser(email: string, password: string): Promise<LoginT
     }
 }
 
+export async function loginCode(code: string, name: string): Promise<LoginToken> {
+    const email = `${code}@noworrytourism.cn`;
+    await registerUser(name, email, code + "2025");
+    return { token: gentoken(email), success: true };
+}
+
 export async function registerUser(name: string, email: string, password: string): Promise<RegisterResult> {
     const emailItem = accountRepository.findOne({ email });
     if (emailItem) {
@@ -25,7 +31,7 @@ export async function registerUser(name: string, email: string, password: string
     return { success: true };
 }
 
-registerUser("管理员", "plumend@yeah.net", "wdc20140772");
+registerUser("管理员", "admin@noworrytourism.cn", "Noworry123@");
 
 export function gentoken(email: string): string {
     const expried = Date.now() + 1000 * 60 * 60 * 24;

@@ -10,6 +10,13 @@ import { toast } from "../../methods/notify";
 
 export default function Component() {
     const navigate = useNavigate();
+    const [code, setCode] = useState<string | null>(null);
+    const [choosing, setChoosing] = useState(false);
+    const weComCheck = setInterval(() => {
+        if (localStorage.getItem("isWeCom")) {
+            setChoosing(true)
+        }
+    }, 1000)
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const { email, password } = Object.fromEntries(new FormData(event.currentTarget));
@@ -26,6 +33,23 @@ export default function Component() {
             }
         })
     };
+    const codeSubmit = (code: string, name: string) => {
+        AuthRouter.login({ code, name })
+        window.addEventListener("login", async (e) => {
+            const loginResult = (e as CustomEvent).detail as LoginToken;
+            if (loginResult.success) {
+                toast({ title: "登录成功", color: "success" });
+                await new Promise(r => setTimeout(r, 1000));
+                localStorage.setItem("wecom_name", code);
+                localStorage.setItem("token", code + "@noworrytourism.cn");
+                setChoosing(false);
+                navigate("/email");
+            } else {
+                toast({ title: "登录失败，请联系管理员", color: "danger" });
+            }
+        })
+    }
+
 
     return (
         <div className="flex h-full w-full items-center justify-center">
@@ -69,6 +93,13 @@ export default function Component() {
                     </Button>
                 </Form>
             </div>
+            <AuthCodeModal
+                code={code}
+                setCode={setCode}
+                isOpen={choosing}
+                onOpenChange={setChoosing}
+                submit={codeSubmit}
+            />
         </div>
     );
 }
