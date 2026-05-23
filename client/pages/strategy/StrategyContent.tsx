@@ -1,83 +1,19 @@
-import { addToast, Button, Form, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem } from "@heroui/react";
-import { StrategyImpl } from "../../../shared/impl";
+import { Button, Form, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/react";
 import { useRef } from "react";
-import { StrategyBodyRequest } from "../../../shared/router/StrategyRouter";
 
 interface props {
-    email: StrategyImpl,
+    email: any,
     isOpen: boolean,
     onOpenChange: any,
-    onSubmit: (data: StrategyBodyRequest) => void
+    onSubmit: (data: any) => void
 }
 
-const EmailContentModal = ({
+const StrategyContentModal = ({
     email,
     isOpen,
     onOpenChange,
     onSubmit
 }: props) => {
-    const ModalBodyContent = () => {
-        return (
-            <div className="flex flex-col">
-                <div className="w-full flex flex-col justify-start items-center gap-1">
-                    <Form className="w-full md:w-1/2 mx-auto" ref={formRef} onSubmit={handleCustomSubmit}>
-                        <div className="w-full flex flex-row justify-beyween items-center">
-                            <Input
-                                label="邮箱"
-                                name="email"
-                                variant="bordered"
-                                labelPlacement="outside"
-                                readOnly
-                                defaultValue={email.email}
-                            />
-                        </div>
-                        <div className="w-full flex flex-row justify-beyween items-center">
-                            <Select
-                                label="站内通知"
-                                labelPlacement="outside"
-                                defaultSelectedKeys={["关闭"]}
-                                variant="bordered"
-                            >
-                                <SelectItem key="启用" textValue="启用">启用</SelectItem>
-                                <SelectItem key="关闭" textValue="关闭">关闭</SelectItem>
-                            </Select>
-                        </div>
-                        <div className="w-full flex flex-row justify-beyween items-center">
-                            <Input
-                                label="转发邮箱"
-                                name="forward"
-                                placeholder="默认为本账号"
-                                variant="bordered"
-                                labelPlacement="outside"
-                                defaultValue={email.forward}
-                            />
-                        </div>
-                        <div className="w-full flex flex-row justify-beyween items-center">
-                            <Input
-                                label="回调地址"
-                                name="callback"
-                                placeholder="可留空"
-                                variant="bordered"
-                                labelPlacement="outside"
-                                defaultValue={email.callback}
-                            />
-                        </div>
-                        <div className="w-full flex flex-row justify-beyween items-center">
-                            <Input
-                                label="备注"
-                                name="comment"
-                                placeholder="用于方便业务区分"
-                                labelPlacement="outside"
-                                variant="bordered"
-                                defaultValue={email.comment}
-                            />
-                        </div>
-                    </Form>
-                </div>
-            </div>
-        )
-    }
-
     const formRef = useRef<HTMLFormElement>(null);
 
     const handleCustomSubmit = (event?: React.FormEvent<HTMLFormElement>) => {
@@ -85,13 +21,16 @@ const EmailContentModal = ({
             event.preventDefault();
             return;
         }
-        const { email, forward, callback, comment } = Object.fromEntries(new FormData(formRef.current!).entries());
+        const { name, fromPattern, toPattern, subjectPattern, forwardTo, enabled } = Object.fromEntries(new FormData(formRef.current!).entries());
 
         onSubmit({
-            email: email.toString(),
-            forward: forward.toString(),
-            callback: callback.toString(),
-            comment: comment.toString()
+            id: email.id,
+            name: name.toString(),
+            from_pattern: fromPattern.toString() || "*",
+            to_pattern: toPattern.toString() || "*",
+            subject_pattern: subjectPattern.toString() || "*",
+            forward_to: forwardTo.toString(),
+            enabled: enabled.toString() === "1" ? 1 : 0,
         })
     };
 
@@ -99,12 +38,62 @@ const EmailContentModal = ({
         handleCustomSubmit();
     };
 
+    const ModalBodyContent = () => {
+        return (
+            <div className="flex flex-col">
+                <div className="w-full flex flex-col justify-start items-center gap-1">
+                    <Form className="w-full md:w-1/2 mx-auto" ref={formRef} onSubmit={handleCustomSubmit}>
+                        <Input
+                            label="策略名称"
+                            name="name"
+                            variant="bordered"
+                            labelPlacement="outside"
+                            defaultValue={email.name}
+                        />
+                        <Input
+                            label="发件匹配"
+                            name="fromPattern"
+                            placeholder="* 表示匹配所有"
+                            variant="bordered"
+                            labelPlacement="outside"
+                            defaultValue={email.from_pattern}
+                        />
+                        <Input
+                            label="收件匹配"
+                            name="toPattern"
+                            placeholder="* 表示匹配所有"
+                            variant="bordered"
+                            labelPlacement="outside"
+                            defaultValue={email.to_pattern}
+                        />
+                        <Input
+                            label="主题匹配"
+                            name="subjectPattern"
+                            placeholder="* 表示匹配所有"
+                            variant="bordered"
+                            labelPlacement="outside"
+                            defaultValue={email.subject_pattern}
+                        />
+                        <Input
+                            label="转发邮箱"
+                            name="forwardTo"
+                            placeholder={localStorage.getItem("default_forward") || "默认为登录邮箱"}
+                            variant="bordered"
+                            labelPlacement="outside"
+                            defaultValue={email.forward_to}
+                        />
+                    </Form>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <Modal isOpen={isOpen} onOpenChange={onOpenChange} className="w-full">
             <ModalContent className="md:min-w-[800px]">
                 {(onClose) => (
                     <>
-                        <ModalHeader className="flex flex-col">邮件详情</ModalHeader>
+                        <ModalHeader className="flex flex-col">策略详情</ModalHeader>
                         <ModalBody>
                             <ModalBodyContent />
                         </ModalBody>
@@ -124,4 +113,4 @@ const EmailContentModal = ({
 };
 
 
-export default EmailContentModal;
+export default StrategyContentModal;

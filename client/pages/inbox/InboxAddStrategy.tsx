@@ -1,11 +1,11 @@
 import { useRef } from "react";
-import { addToast, Button, Form, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/react";
-import { StrategyBodyRequest } from "../../../shared/router/StrategyRouter";
+import { Button, Form, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@heroui/react";
+import { toast } from "../../methods/notify";
 
 interface props {
     isOpen: boolean,
     onOpenChange: any,
-    onSubmit: (data: StrategyBodyRequest) => void
+    onSubmit: (data: any) => void
 }
 
 const InboxAddStrategyModal = ({
@@ -21,14 +21,18 @@ const InboxAddStrategyModal = ({
             return;
         }
         const { email, forward, callback, comment } = Object.fromEntries(new FormData(formRef.current!).entries());
+
         if (!email || email.toString().includes("@")) {
-            return addToast({ title: "邮箱格式错误", color: "danger" })
+            return toast({ title: "邮箱格式错误", color: "danger" })
         }
+
         onSubmit({
-            email: email.toString(),
-            forward: forward.toString(),
-            callback: callback.toString(),
-            comment: comment.toString()
+            name: email.toString().toLocaleLowerCase(),
+            from_pattern: "*",
+            to_pattern: email.toString().toLocaleLowerCase(),
+            subject_pattern: "*",
+            forward_to: forward.toString().length ? forward.toString().toLocaleLowerCase() : localStorage.getItem("default_forward") || "",
+            enabled: 1,
         })
     };
 
@@ -50,7 +54,7 @@ const InboxAddStrategyModal = ({
                         variant="bordered"
                         className="mb-4"
                         endContent={
-                            <div className="w-full text-right text-sm text-gray-600"                        >
+                            <div className="w-full text-right text-sm text-gray-600">
                                 @noworrytourism.cn
                             </div>
                         }
@@ -59,7 +63,7 @@ const InboxAddStrategyModal = ({
                         label="转发邮箱"
                         name="forward"
                         labelPlacement="outside"
-                        placeholder="默认为本账号"
+                        placeholder={localStorage.getItem("default_forward") || "默认为登录邮箱"}
                         variant="bordered"
                         className="mb-4"
                     />
@@ -87,7 +91,7 @@ const InboxAddStrategyModal = ({
             <ModalContent className="md:min-w-[800px] max-h-[80vh]">
                 {(onClose) => (
                     <>
-                        <ModalHeader className="flex flex-col">新建邮箱</ModalHeader>
+                        <ModalHeader className="flex flex-col">新建策略</ModalHeader>
                         <ModalBody className="overflow-y-auto">
                             <ModalBodyContent />
                         </ModalBody>
