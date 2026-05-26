@@ -1,4 +1,4 @@
-import { addToast } from "@heroui/react";
+import { toast } from "../methods/notify";
 
 export class WebSocketClientService {
     private static instance: WebSocketClientService;
@@ -25,7 +25,7 @@ export class WebSocketClientService {
                 const event = new CustomEvent(name, { detail, bubbles: true });
                 window.dispatchEvent(event);
             } else {
-                addToast({ title: "Error", description: "Request failed" })
+                toast({ title: "Error", description: "Request failed" })
             }
         };
     }

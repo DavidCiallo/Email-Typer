@@ -10,9 +10,9 @@ const StrategyTable = (params: {
     return (
         <Table aria-label="table" isStriped>
             <TableHeader>
-                {keyLables.map((item) => {
+                {keyLables.map((item, index) => {
                     return (
-                        <TableColumn key={item.key} align="center">{item.label}</TableColumn>
+                        <TableColumn key={index} align="center">{item.label}</TableColumn>
                     )
                 })}
             </TableHeader>

@@ -33,19 +33,25 @@ bun install
 ```bash
 cp .env.example .env
 ```
+但开发环境与部署环境不同，部署仅需单个端口，HTTP只需指定唯一变量SERVER_HTTP_PORT即可
 
 ### 启动开发环境
 
-#### 前端
+####
+```bash
+npm run all
+```
+
+#### 单独启用前端
 
 ```bash
 npm run dev
 ```
 
-#### 后端
+#### 单独启用后端
 
 ```bash
-npm run server
+npm run serve
 ```
 
 ## 目录结构

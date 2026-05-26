@@ -17,14 +17,22 @@ export class StrategyRouterInstance extends BaseRouterInstance {
             method: "post",
             handler: Function
         },
+        {
+            name: "requestDeleteStrategy",
+            path: "/delete",
+            method: "post",
+            handler: Function
+        },
     ]
 
     queryStrategyList: (query: StrategyListQuery, callback?: Function) => Promise<StrategyListResponse>
     requestSaveStrategy: (request: StrategyBodyRequest, callback?: Function) => Promise<StrategySaveResponse>
+    requestDeleteStrategy: (request: StrategyDeleteRequest, callback?: Function) => Promise<StrategyDeleteResponse>
 
     constructor(inject: Function, functions?: {
         queryStrategyList: (query: StrategyListQuery) => Promise<StrategyListResponse>,
         requestSaveStrategy: (request: StrategyBodyRequest) => Promise<StrategySaveResponse>
+        requestDeleteStrategy: (request: StrategyDeleteRequest) => Promise<StrategyDeleteResponse>
     }) { super(); inject(this, functions); }
 }
 
@@ -45,5 +53,14 @@ export interface StrategyBodyRequest extends BaseRequest {
 }
 
 export interface StrategySaveResponse {
+    success: boolean;
+}
+
+export interface StrategyDeleteRequest extends BaseRequest {
+    email: string;
+    creater: string;
+}
+
+export interface StrategyDeleteResponse {
     success: boolean;
 }

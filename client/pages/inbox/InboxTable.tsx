@@ -43,20 +43,29 @@ const InboxTable = (params: {
                     { key: "action", label: "操作" },
                 ].map((item, index) => {
                     return (
-                        <TableColumn key={index} align="center">{item.label}</TableColumn>
-                    )
+                        <TableColumn width={40} key={index} align="center">
+                            {item.label}
+                        </TableColumn>
+                    );
                 })}
             </TableHeader>
-            <TableBody>
-                {emailList.map((row, index) =>
+            <TableBody
+                isLoading={isLoading}
+                loadingContent={
+                    <div className="w-full h-full flex justify-center items-center bg-[rgba(0,0,0,0.2)]">
+                        <Spinner />
+                    </div>
+                }
+            >
+                {emailList.map((email, index) => (
                     <TableRow key={index}>
-                        <TableCell className="w-50">
+                        <TableCell className="min-w-40 max-w-40">
                             <div>
                                 <div className="mr-1">
-                                    {row.from.split(" <")[0].replace(/[\"]/g, "")}
+                                    <span className="whitespace-nowrap">{formatEmail(email.from).name}</span>
                                 </div>
                                 <div className="text-xs text-gray-400">
-                                    {row.from.split(" <").length > 1 ? "(" + row.from.split(" <")?.[1]?.replace(/[<>]/g, "") + ")" : ""}
+                                    <span className="whitespace-nowrap">{formatEmail(email.from).email}</span>
                                 </div>
                             </div>
                         </TableCell>
@@ -90,10 +99,10 @@ const InboxTable = (params: {
                             </div>
                         </TableCell>
                     </TableRow>
-                )}
+                ))}
             </TableBody>
         </Table>
-    )
-}
+    );
+};
 
 export default InboxTable;

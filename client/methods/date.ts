@@ -6,7 +6,7 @@ export function sortDates(dateStrings: string[]): string[] {
         .sort((a, b) => a.getTime() - b.getTime());
 
     const result: string[] = [];
-    result.push(...dateObjects.map(i => i.toISOString().slice(0, 10).replaceAll('-', '/')));
+    result.push(...dateObjects.map(i => i.toISOString()?.slice(0, 10).replaceAll('-', '/')));
     return result;
 }
 
@@ -41,14 +41,14 @@ export function groupConsecutiveDates(dateStrings: string[]): string[][] {
 
     result.push(formatGroup(currentGroup));
 
-    function formatGroup(group) {
+    function formatGroup(group: Date[]) {
         return group.length > 1
             ? [formatDate(group[0]), formatDate(group[group.length - 1])]
             : [formatDate(group[0])];
     }
 
     function formatDate(date: Date) {
-        return date.toISOString().slice(0, 10).replaceAll('-', '/');
+        return date.toISOString()?.slice(0, 10).replaceAll('-', '/');
     }
 
     return result;
