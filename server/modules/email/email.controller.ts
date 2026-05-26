@@ -15,7 +15,7 @@ async function list(request: EmailListRequest) {
     const email = getIdentifyByVerify(request.auth || "");
     if (!email) throw "Unauthorized";
 
-    const where: Record<string, any> = {};
+    const where: Record<string, any> = { delete_time: null };
     if (request.account_id) {
         where.account_id = request.account_id;
     }
@@ -84,7 +84,6 @@ async function deleteEmail(request: EmailDeleteRequest) {
     request = EmailDeleteRequest.self(request);
     const email = getIdentifyByVerify(request.auth || "");
     if (!email) throw "Unauthorized";
-
     const result = await EmailService.delete(request.id);
     if (!result) throw "Email not found";
     return {};

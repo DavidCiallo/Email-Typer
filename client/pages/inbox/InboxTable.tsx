@@ -1,11 +1,37 @@
 import { Button, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
 
+function formatTime(ts: number): string {
+    const d = new Date(ts);
+    const now = new Date();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const time = d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+
+    // Today: only time
+    if (d.toDateString() === now.toDateString()) {
+        return `今天 ${time}`;
+    }
+    // Yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+        return `昨天 ${time}`;
+    }
+    // This year: month-day + time
+    if (d.getFullYear() === now.getFullYear()) {
+        return `${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")} ${time}`;
+    }
+    // Previous years: full date
+    return `${d.getFullYear()}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
+
 const InboxTable = (params: {
     emailList: Array<any>,
     setEmailContentOpen: Function,
-    setFocusEmail: Function
+    setFocusEmail: Function,
+    onArchive: (id: string) => void,
 }) => {
-    const { emailList, setEmailContentOpen, setFocusEmail } = params;
+    const { emailList, setEmailContentOpen, setFocusEmail, onArchive } = params;
     return (
         <Table aria-label="table" isStriped>
             <TableHeader>
@@ -13,9 +39,8 @@ const InboxTable = (params: {
                     { key: "from", label: "发件人" },
                     { key: "to", label: "收件人" },
                     { key: "subject", label: "主题" },
-                    { key: "content", label: "内容" },
                     { key: "time", label: "时间" },
-                    { key: "action", label: "查看" },
+                    { key: "action", label: "操作" },
                 ].map((item, index) => {
                     return (
                         <TableColumn key={index} align="center">{item.label}</TableColumn>
@@ -38,29 +63,31 @@ const InboxTable = (params: {
                         <TableCell className="w-50">
                             <div>{row.to}</div>
                         </TableCell>
-                        <TableCell className="80">
+                        <TableCell className="w-80">
                             <div>{row.subject}</div>
                         </TableCell>
-                        <TableCell className="max-w-120">
-                            <span>{row.text.slice(0, window.innerWidth / 50)}</span>
-                            <span>{row.text.length > window.innerWidth / 50 ? "......" : ""}</span>
-                        </TableCell>
-
                         <TableCell className="w-30">
-                            <div>
-                                {new Date(Number(row.time)).toLocaleDateString().slice(5) + " "}
-                                {new Date(Number(row.time)).toLocaleTimeString().slice(0, -3)}
-                            </div>
+                            <div>{formatTime(Number(row.time))}</div>
                         </TableCell>
-                        <TableCell className="w-20">
-                            <Button
-                                size="sm" color="primary"
-                                variant="bordered"
-                                className="h-7 text-primary"
-                                onClick={() => { setEmailContentOpen(true); setFocusEmail(row) }}
-                            >
-                                查看
-                            </Button>
+                        <TableCell className="w-40">
+                            <div className="flex flex-row gap-2 justify-center">
+                                <Button
+                                    size="sm" color="primary"
+                                    variant="bordered"
+                                    className="h-7 text-primary"
+                                    onClick={() => { setEmailContentOpen(true); setFocusEmail(row) }}
+                                >
+                                    查看
+                                </Button>
+                                <Button
+                                    size="sm" color="warning"
+                                    variant="bordered"
+                                    className="h-7 text-warning"
+                                    onClick={() => onArchive(row.id)}
+                                >
+                                    归档
+                                </Button>
+                            </div>
                         </TableCell>
                     </TableRow>
                 )}

@@ -117,7 +117,11 @@ async function* readLines(name: string, skipDeleted: boolean): AsyncGenerator<Ro
 /** Check if a row matches the where conditions */
 function matches<T extends Row>(row: T, where: Record<string, any>): boolean {
     for (const [key, val] of Object.entries(where)) {
-        if (val === undefined || val === null || val === "") continue;
+        if (val === undefined || val === "") continue;
+        if (val === null) {
+            if (row[key] !== null && row[key] !== undefined) return false;
+            continue;
+        }
         if (row[key] !== val) return false;
     }
     return true;

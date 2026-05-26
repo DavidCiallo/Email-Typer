@@ -33,7 +33,7 @@ const EmailPage = () => {
         setAllEmailList(result.list || []);
         setIsLoading(false);
 
-        const accountList = Array.from(new Set((result.list || []).map((email: any) => email.to)));
+        const accountList: string[] = Array.from(new Set((result.list || []).map((email: any) => email.to)));
         setAccountList(accountList);
     }
 
@@ -81,9 +81,17 @@ const EmailPage = () => {
                 <div className="w-full hidden md:block">
                     <InboxTable
                         emailList={allEmailList}
-                        isLoading={isLoading}
                         setEmailContentOpen={setEmailContentOpen}
                         setFocusEmail={setFocusEmail}
+                        onArchive={(id) => {
+                            EmailRouter.delete({ id }, (res: any) => {
+                                if (res.success) {
+                                    queryEmails();
+                                } else {
+                                    toast({ title: res.message || "归档失败", color: "danger" });
+                                }
+                            });
+                        }}
                     />
                 </div>
                 <div className="w-full block sm:hidden">
