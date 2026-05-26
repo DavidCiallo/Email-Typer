@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${SERVER_PORT:-3300}:${SERVER_PORT:-3300}"
+    volumes:
+      - ./data:/app/data
+      - ./eml:/app/eml
+    env_file:
+      - .env
+    restart: unless-stopped

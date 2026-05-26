@@ -1,4 +1,5 @@
-import { Button, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
+import { Button, Spinner, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
+import { formatEmail } from "../../methods/format";
 
 function formatTime(ts: number): string {
     const d = new Date(ts);
@@ -50,7 +51,6 @@ const InboxTable = (params: {
                 })}
             </TableHeader>
             <TableBody
-                isLoading={isLoading}
                 loadingContent={
                     <div className="w-full h-full flex justify-center items-center bg-[rgba(0,0,0,0.2)]">
                         <Spinner />
@@ -70,13 +70,13 @@ const InboxTable = (params: {
                             </div>
                         </TableCell>
                         <TableCell className="w-50">
-                            <div>{row.to}</div>
+                            <div>{email.to}</div>
                         </TableCell>
                         <TableCell className="w-80">
-                            <div>{row.subject}</div>
+                            <div>{email.subject}</div>
                         </TableCell>
                         <TableCell className="w-30">
-                            <div>{formatTime(Number(row.time))}</div>
+                            <div>{formatTime(Number(email.time))}</div>
                         </TableCell>
                         <TableCell className="w-40">
                             <div className="flex flex-row gap-2 justify-center">
@@ -84,7 +84,7 @@ const InboxTable = (params: {
                                     size="sm" color="primary"
                                     variant="bordered"
                                     className="h-7 text-primary"
-                                    onClick={() => { setEmailContentOpen(true); setFocusEmail(row) }}
+                                    onClick={() => { setEmailContentOpen(true); setFocusEmail(email) }}
                                 >
                                     查看
                                 </Button>
@@ -92,7 +92,7 @@ const InboxTable = (params: {
                                     size="sm" color="warning"
                                     variant="bordered"
                                     className="h-7 text-warning"
-                                    onClick={() => onArchive(row.id)}
+                                    onClick={() => onArchive(email.id)}
                                 >
                                     归档
                                 </Button>
