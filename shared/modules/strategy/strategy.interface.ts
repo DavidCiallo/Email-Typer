@@ -1,7 +1,7 @@
 import { BaseRequest, BaseResponse } from "../../lib/default/decorator";
 import { StrategyEntity } from "./strategy.entity";
 
-export type StrategyDTO = Pick<StrategyEntity, "id" | "name" | "from_pattern" | "to_pattern" | "subject_pattern" | "forward_to" | "enabled" | "account_id">;
+export type StrategyDTO = Pick<StrategyEntity, "id" | "name" | "from_pattern" | "to_pattern" | "subject_pattern" | "forward_to" | "enabled" | "account_id"> & { creator_name?: string; creator_email?: string };
 
 // List
 export class StrategyListRequest implements BaseRequest {

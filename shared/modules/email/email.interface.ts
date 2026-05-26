@@ -133,6 +133,32 @@ export class EmailReceiveResponse implements BaseResponse<{ id: string }> {
     }
 }
 
+// Scan maildir for new emails
+export class EmailScanRequest implements BaseRequest {
+    public auth?: string;
+    public path?: string;
+
+    constructor(origin: Partial<EmailScanRequest>) {
+        origin.auth && (this.auth = origin.auth);
+        this.path = origin.path;
+    }
+    static self(unsafe: EmailScanRequest) {
+        return new EmailScanRequest(unsafe);
+    }
+}
+
+export class EmailScanResponse implements BaseResponse<{ scanned: number; imported: number }> {
+    public success: boolean;
+    public message: string;
+    public data?: { scanned: number; imported: number };
+
+    constructor(origin: EmailScanResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
 // Delete email
 export class EmailDeleteRequest implements BaseRequest {
     public auth?: string;

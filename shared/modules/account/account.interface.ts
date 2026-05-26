@@ -123,6 +123,66 @@ export class AccountUpdateResponse implements BaseResponse<AccountDTO> {
     }
 }
 
+// Export / Import
+export interface ExportData {
+    version: number;
+    exported_at: number;
+    data: {
+        accounts?: any[];
+        emails?: any[];
+        strategies?: any[];
+        settings?: any[];
+    };
+}
+
+export class AccountExportRequest implements BaseRequest {
+    public auth?: string;
+    constructor(origin: Partial<AccountExportRequest>) {
+        origin.auth && (this.auth = origin.auth);
+    }
+    static self(unsafe: AccountExportRequest) {
+        return new AccountExportRequest(unsafe);
+    }
+}
+
+export class AccountExportResponse implements BaseResponse<any> {
+    public success: boolean;
+    public message: string;
+    public data?: ExportData;
+
+    constructor(origin: AccountExportResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+export class AccountImportRequest implements BaseRequest {
+    public auth?: string;
+    public data: ExportData;
+
+    constructor(origin: Partial<AccountImportRequest>) {
+        if (!origin.data) throw new Error("data is required");
+        origin.auth && (this.auth = origin.auth);
+        this.data = origin.data;
+    }
+    static self(unsafe: AccountImportRequest) {
+        return new AccountImportRequest(unsafe);
+    }
+}
+
+export class AccountImportResponse implements BaseResponse<{ imported: Record<string, number> }> {
+    public success: boolean;
+    public message: string;
+    public data?: { imported: Record<string, number> };
+
+    constructor(origin: AccountImportResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
 // Delete
 export class AccountDeleteRequest implements BaseRequest {
     public auth?: string;
