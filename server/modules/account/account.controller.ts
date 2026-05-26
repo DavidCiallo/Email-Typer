@@ -3,10 +3,13 @@ import {
     AccountCreateRequest,
     AccountUpdateRequest,
     AccountDeleteRequest,
+    AccountExportRequest,
+    AccountImportRequest,
 } from "../../../shared/modules/account/account.interface";
 import { accountRoutes } from "../../../shared/modules/account/account.router";
 import { AccountService } from "./account.service";
 import { requireAdmin } from "../auth/auth.service";
+import Repository from "../../lib/repository";
 
 async function list(request: AccountListRequest) {
     request = AccountListRequest.self(request);
@@ -38,7 +41,56 @@ async function deleteAccount(request: AccountDeleteRequest) {
     return {};
 }
 
+// ========== Export / Import ==========
+
+async function exportData(request: AccountExportRequest) {
+    await requireAdmin(request.auth);
+
+    const accountRepo = Repository.instance("Account");
+    const emailRepo = Repository.instance("Email");
+    const strategyRepo = Repository.instance("Strategy");
+    const settingsRepo = Repository.instance("Settings");
+
+    const [accounts, emails, strategies, settings] = await Promise.all([
+        accountRepo.findAllIgnoreDelete(),
+        emailRepo.findAllIgnoreDelete(),
+        strategyRepo.findAllIgnoreDelete(),
+        settingsRepo.findAllIgnoreDelete(),
+    ]);
+
+    return {
+        version: 1,
+        exported_at: Date.now(),
+        data: { accounts, emails, strategies, settings },
+    };
+}
+
+async function importData(request: AccountImportRequest) {
+    await requireAdmin(request.auth);
+
+    const { data } = request.data;
+    const imported: Record<string, number> = {};
+
+    const tables: { repo: Repository<any>; items: any[] | undefined; name: string }[] = [
+        { repo: Repository.instance("Account"), items: data.accounts, name: "accounts" },
+        { repo: Repository.instance("Email"), items: data.emails, name: "emails" },
+        { repo: Repository.instance("Strategy"), items: data.strategies, name: "strategies" },
+        { repo: Repository.instance("Settings"), items: data.settings, name: "settings" },
+    ];
+
+    for (const { repo, items, name } of tables) {
+        if (!items || items.length === 0) continue;
+        await repo.hardDelete({});
+        for (let i = 0; i < items.length; i += 1000) {
+            const chunk = items.slice(i, i + 1000);
+            imported[name] = (imported[name] || 0) + await repo.batchInsert(chunk);
+        }
+    }
+
+    return { imported };
+}
+
 export const accountMount = {
     routes: accountRoutes,
-    handlers: { list, create, update, delete: deleteAccount },
+    handlers: { list, create, update, delete: deleteAccount, export: exportData, import: importData },
 };

@@ -3,6 +3,7 @@ import {
     EmailDetailRequest,
     EmailSendRequest,
     EmailReceiveRequest,
+    EmailScanRequest,
     EmailDeleteRequest,
 } from "../../../shared/modules/email/email.interface";
 import { emailRoutes } from "../../../shared/modules/email/email.router";
@@ -69,6 +70,16 @@ async function receive(request: EmailReceiveRequest) {
     return { id: email.id };
 }
 
+async function scan(request: EmailScanRequest) {
+    request = EmailScanRequest.self(request);
+    const email = getIdentifyByVerify(request.auth || "");
+    if (!email) throw "Unauthorized";
+
+    const maildirPath = request.path || process.env.MAILDIR_PATH || "./maildir";
+    const result = await EmailService.scanDirectory(maildirPath);
+    return result;
+}
+
 async function deleteEmail(request: EmailDeleteRequest) {
     request = EmailDeleteRequest.self(request);
     const email = getIdentifyByVerify(request.auth || "");
@@ -81,5 +92,5 @@ async function deleteEmail(request: EmailDeleteRequest) {
 
 export const emailMount = {
     routes: emailRoutes,
-    handlers: { list, detail, send, receive, delete: deleteEmail },
+    handlers: { list, detail, send, receive, scan, delete: deleteEmail },
 };

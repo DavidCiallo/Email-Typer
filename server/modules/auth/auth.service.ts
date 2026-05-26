@@ -2,7 +2,6 @@ import { aesDecrypt, aesEncrypt, hashGenerate } from "../../methods/crypto";
 import { AccountEntity } from "../../../shared/modules/account/account.entity";
 import Repository from "../../lib/repository";
 import { sendEmail, buildVerificationEmail } from "../email/email.service";
-import { AccountService } from "../account/account.service";
 import { SettingsService } from "../settings/settings.service";
 
 const accountRepository: Repository<AccountEntity> = Repository.instance("Account");

@@ -124,10 +124,97 @@ export class EmailService {
     }
 
     /**
+     * Scan a directory recursively for Maildir files and import any that don't already exist.
+     * Supports both standard Maildir structure (domain/new/filename) and plain .eml files.
+     * Deduplication: checks if any email already has this raw_path stored.
+     * Returns { scanned, imported } counts.
+     */
+    static async scanDirectory(dirPath: string): Promise<{ scanned: number; imported: number }> {
+        if (!fs.existsSync(dirPath)) {
+            throw `Directory not found: ${dirPath}`;
+        }
+
+        const stat = fs.statSync(dirPath);
+        if (!stat.isDirectory()) {
+            throw `Path is not a directory: ${dirPath}`;
+        }
+
+        // Build set of known raw_paths for dedup
+        const existingPaths = new Set<string>();
+        const allEmails = await emailRepository.find();
+        for (const e of allEmails) {
+            if (e.raw_path) existingPaths.add(e.raw_path.replace(/\\/g, "/"));
+        }
+
+        // Recursively collect all regular files, skip dotfiles
+        const mailFiles: string[] = [];
+        function walk(dir: string) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (entry.name.startsWith(".")) continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    walk(full);
+                } else if (entry.isFile()) {
+                    mailFiles.push(full);
+                }
+            }
+        }
+        walk(dirPath);
+
+        let imported = 0;
+
+        for (const fullPath of mailFiles) {
+            const normalizedPath = fullPath.replace(/\\/g, "/");
+
+            // Skip if already imported
+            if (existingPaths.has(normalizedPath)) {
+                continue;
+            }
+
+            try {
+                const content = fs.readFileSync(fullPath, "utf-8");
+                const parsed = EmailService.parseRawEmail(content);
+                if (!parsed) continue;
+
+                const email: Partial<EmailEntity> = {
+                    eid: nanoid(12),
+                    from: parsed.from || "",
+                    to: parsed.to || "",
+                    subject: parsed.subject || "",
+                    html: parsed.html || "",
+                    text: parsed.text || "",
+                    time: parsed.time || Date.now(),
+                    account_id: parsed.account_id || "",
+                    raw_path: fullPath,
+                };
+
+                await emailRepository.insert(email);
+                imported++;
+
+                // Trigger forwarding strategies
+                const { StrategyService } = await import("../strategy/strategy.service");
+                StrategyService.matchAndForward(email as any).catch(e => {
+                    console.error("[EmailService] Strategy forward failed:", e);
+                });
+            } catch (e) {
+                console.error("[EmailService] Failed to import:", fullPath, e);
+            }
+        }
+
+        return { scanned: mailFiles.length, imported };
+    }
+
+    /**
      * Parse an email file from disk and store it in the repository.
      * Simple MIME parser — extracts headers and body.
      */
     static async importFromFile(filePath: string): Promise<EmailEntity | null> {
+        const normalizedPath = filePath.replace(/\\/g, "/");
+
+        // Dedup: skip if this file was already imported
+        const existing = await emailRepository.find({ raw_path: normalizedPath } as any);
+        if (existing.length > 0) return null;
+
         try {
             const content = fs.readFileSync(filePath, "utf-8");
             const parsed = EmailService.parseRawEmail(content);
@@ -150,6 +237,63 @@ export class EmailService {
             console.error("Failed to import email from file:", filePath, e);
             return null;
         }
+    }
+
+    /**
+     * Decode RFC 2047 MIME encoded-words like =?UTF-8?B?base64?= or =?UTF-8?Q?quoted-printable?=
+     */
+    private static decodeMimeHeader(value: string): string {
+        return value.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_match, _charset: string, encoding: string, data: string) => {
+            try {
+                if (encoding.toUpperCase() === "B") {
+                    return Buffer.from(data, "base64").toString("utf-8");
+                } else if (encoding.toUpperCase() === "Q") {
+                    // Decode via bytes to handle multi-byte UTF-8 sequences properly
+                    const bytes: number[] = [];
+                    const src = data.replace(/_/g, " ");
+                    let i = 0;
+                    while (i < src.length) {
+                        if (src[i] === "=" && i + 2 < src.length) {
+                            bytes.push(parseInt(src.substring(i + 1, i + 3), 16));
+                            i += 3;
+                        } else {
+                            bytes.push(src.charCodeAt(i));
+                            i++;
+                        }
+                    }
+                    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+                }
+            } catch { /* use raw if decode fails */ }
+            return data;
+        });
+    }
+
+    /**
+     * Decode a body part according to Content-Transfer-Encoding.
+     */
+    private static decodeBody(body: string, encoding: string): string {
+        const enc = encoding.toLowerCase();
+        if (enc === "base64") {
+            try {
+                return Buffer.from(body.replace(/[\s\n\r]/g, ""), "base64").toString("utf-8");
+            } catch { /* fall through */ }
+        } else if (enc === "quoted-printable") {
+            // Decode via bytes to properly handle multi-byte UTF-8 sequences like =E9=AA=8C
+            const bytes: number[] = [];
+            const src = body.replace(/=\r?\n/g, "");      // soft line breaks
+            let i = 0;
+            while (i < src.length) {
+                if (src[i] === "=" && i + 2 < src.length) {
+                    bytes.push(parseInt(src.substring(i + 1, i + 3), 16));
+                    i += 3;
+                } else {
+                    bytes.push(src.charCodeAt(i));
+                    i++;
+                }
+            }
+            return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+        }
+        return body;
     }
 
     /**
@@ -178,9 +322,9 @@ export class EmailService {
                 }
             }
 
-            const from = headers["from"] || "";
-            const to = headers["to"] || "";
-            const subject = headers["subject"] || "";
+            const from = EmailService.decodeMimeHeader(headers["from"] || "");
+            const to = EmailService.decodeMimeHeader(headers["to"] || "");
+            const subject = EmailService.decodeMimeHeader(headers["subject"] || "");
             const dateStr = headers["date"] || "";
             const time = dateStr ? new Date(dateStr).getTime() : Date.now();
 
@@ -202,25 +346,33 @@ export class EmailService {
                 let html = "";
 
                 for (const part of parts) {
-                    if (part.includes("Content-Type: text/plain")) {
+                    // Extract part headers for transfer encoding
+                    const partHeaders: Record<string, string> = {};
+                    const partHeaderMatch = part.match(/([\s\S]*?)\r?\n\r?\n/);
+                    if (partHeaderMatch) {
+                        for (const line of partHeaderMatch[1].split(/\r?\n/)) {
+                            const ci = line.indexOf(":");
+                            if (ci > 0) {
+                                partHeaders[line.substring(0, ci).toLowerCase()] = line.substring(ci + 1).trim();
+                            }
+                        }
+                    }
+                    const partEncoding = partHeaders["content-transfer-encoding"] || "";
+
+                    if (partHeaders["content-type"]?.includes("text/plain")) {
                         const partBody = part.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
-                        text = partBody;
-                    } else if (part.includes("Content-Type: text/html")) {
+                        text = EmailService.decodeBody(partBody, partEncoding);
+                    } else if (partHeaders["content-type"]?.includes("text/html")) {
                         const partBody = part.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
-                        html = partBody;
+                        html = EmailService.decodeBody(partBody, partEncoding);
                     }
                 }
 
                 return { from, to, subject, text, html, time, account_id };
             } else {
-                // Single part — check if it's base64 encoded
+                // Single part
                 const encoding = headers["content-transfer-encoding"] || "";
-                let body = bodySection;
-                if (encoding.toLowerCase() === "base64") {
-                    try {
-                        body = Buffer.from(body.replace(/\s/g, ""), "base64").toString("utf-8");
-                    } catch { /* ignore */ }
-                }
+                const body = EmailService.decodeBody(bodySection, encoding);
 
                 if (contentType.includes("text/html")) {
                     return { from, to, subject, html: body, text: body.replace(/<[^>]+>/g, ""), time, account_id };
@@ -234,33 +386,40 @@ export class EmailService {
     }
 }
 
-// ========== Maildir Watcher ==========
-
-let watcher: chokidar.FSWatcher | null = null;
+let watcher: ReturnType<typeof chokidar.watch> | null = null;
 
 export function startEmailWatcher(maildirPath: string): void {
     if (watcher) return;
 
-    const watchPath = path.join(maildirPath, "new");
-
-    if (!fs.existsSync(watchPath)) {
-        console.warn(`Maildir 'new' directory not found: ${watchPath}`);
+    if (!fs.existsSync(maildirPath)) {
+        console.warn(`Maildir path not found: ${maildirPath}`);
         return;
     }
 
-    watcher = chokidar.watch(watchPath, {
+    // Watch the entire maildir directory (the ** /new glob pattern doesn't work on Windows).
+    // Filter for files inside */new/ subdirectories in the "add" handler.
+    watcher = chokidar.watch(maildirPath, {
         ignored: /(^|[\/\\])\../,
         persistent: true,
-        ignoreInitial: true,
+        ignoreInitial: false,
+        depth: 5,
     });
 
     watcher.on("add", async (filePath: string) => {
-        console.log(`[EmailWatcher] New email detected: ${filePath}`);
+        const basename = path.basename(filePath);
+        if (basename.startsWith(".")) return;
+
+        // Only process files inside a */new/ subdirectory
+        const normalized = filePath.replace(/\\/g, "/");
+        if (!normalized.includes("/new/")) return;
+
         try {
             const email = await EmailService.importFromFile(filePath);
             if (email) {
-                console.log(`[EmailWatcher] Email stored: ${email.id}`);
-                // TODO: trigger forwarding strategies here
+                const { StrategyService } = await import("../strategy/strategy.service");
+                StrategyService.matchAndForward(email).catch(e => {
+                    console.error("[EmailWatcher] Strategy forward failed:", e);
+                });
             }
         } catch (e) {
             console.error("[EmailWatcher] Failed to process email:", e);
@@ -271,7 +430,7 @@ export function startEmailWatcher(maildirPath: string): void {
         console.error("[EmailWatcher] Error:", error);
     });
 
-    console.log(`[EmailWatcher] Watching: ${watchPath}`);
+    console.log(`[EmailWatcher] Watching recursively under: ${maildirPath}`);
 }
 
 export function stopEmailWatcher(): void {
