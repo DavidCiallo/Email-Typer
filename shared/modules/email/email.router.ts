@@ -5,6 +5,7 @@ import {
     EmailReceiveRequest, EmailReceiveResponse,
     EmailScanRequest, EmailScanResponse,
     EmailDeleteRequest, EmailDeleteResponse,
+    EmailRestoreRequest, EmailRestoreResponse,
 } from "./email.interface";
 
 export const emailRoutes = {
@@ -16,4 +17,5 @@ export const emailRoutes = {
     receive: { path: "/receive", request: {} as EmailReceiveRequest, response: {} as EmailReceiveResponse },
     scan:    { path: "/scan",    request: {} as EmailScanRequest,    response: {} as EmailScanResponse },
     delete:  { path: "/delete",  request: {} as EmailDeleteRequest,  response: {} as EmailDeleteResponse },
+    restore: { path: "/restore", request: {} as EmailRestoreRequest, response: {} as EmailRestoreResponse },
 } as const;

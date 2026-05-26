@@ -183,3 +183,28 @@ export class EmailDeleteResponse implements BaseResponse<null> {
         this.message = origin.message;
     }
 }
+
+// Restore email
+export class EmailRestoreRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+
+    constructor(origin: Partial<EmailRestoreRequest>) {
+        if (!origin.id) throw new Error("Email id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+    }
+    static self(unsafe: EmailRestoreRequest) {
+        return new EmailRestoreRequest(unsafe);
+    }
+}
+
+export class EmailRestoreResponse implements BaseResponse<null> {
+    public success: boolean;
+    public message: string;
+
+    constructor(origin: EmailRestoreResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+    }
+}

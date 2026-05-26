@@ -9,5 +9,4 @@ export interface EmailEntity extends BaseEntity {
     text: string;          // plain text content
     time: number;          // email sent time (timestamp)
     account_id: string;    // associated account id (recipient)
-    raw_path: string;      // original file path on disk
 }

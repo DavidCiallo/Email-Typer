@@ -95,6 +95,10 @@ export class EmailService {
         return await emailRepository.delete({ id } as any);
     }
 
+    static async restore(id: string): Promise<boolean> {
+        return await emailRepository.atomicPatch({ id } as any, () => ({ delete_time: null }), true);
+    }
+
     /**
      * Receive raw email string, parse and store it in the repository.
      * Used by the /api/email/receive endpoint (called by external MTA).
@@ -112,7 +116,6 @@ export class EmailService {
             text: parsed.text || "",
             time: parsed.time || Date.now(),
             account_id: parsed.account_id || "",
-            raw_path: "",
         };
 
         const stored = await emailRepository.insert(email);
@@ -127,9 +130,16 @@ export class EmailService {
     }
 
     /**
+     * Dedup signature: from + to + subject + time uniquely identifies an email.
+     */
+    private static dedupKey(e: { from?: string; to?: string; subject?: string; time?: number }): string {
+        return `${e.from || ""}|${e.to || ""}|${e.subject || ""}|${e.time || 0}`;
+    }
+
+    /**
      * Scan a directory recursively for Maildir files and import any that don't already exist.
      * Supports both standard Maildir structure (domain/new/filename) and plain .eml files.
-     * Deduplication: checks if any email already has this raw_path stored.
+     * Deduplication: uses from+to+subject+time fingerprint (include soft-deleted to prevent re-import).
      * Returns { scanned, imported } counts.
      */
     static async scanDirectory(dirPath: string): Promise<{ scanned: number; imported: number }> {
@@ -142,11 +152,11 @@ export class EmailService {
             throw `Path is not a directory: ${dirPath}`;
         }
 
-        // Build set of known raw_paths for dedup (include soft-deleted to prevent re-import)
-        const existingPaths = new Set<string>();
+        // Build set of known dedup keys (include soft-deleted)
+        const existingKeys = new Set<string>();
         const allEmails = await emailRepository.findAllIgnoreDelete();
         for (const e of allEmails) {
-            if (e.raw_path) existingPaths.add(e.raw_path.replace(/\\/g, "/"));
+            existingKeys.add(EmailService.dedupKey(e));
         }
 
         // Recursively collect all regular files, skip dotfiles
@@ -167,17 +177,15 @@ export class EmailService {
         let imported = 0;
 
         for (const fullPath of mailFiles) {
-            const normalizedPath = fullPath.replace(/\\/g, "/");
-
-            // Skip if already imported
-            if (existingPaths.has(normalizedPath)) {
-                continue;
-            }
-
             try {
                 const content = fs.readFileSync(fullPath, "utf-8");
                 const parsed = EmailService.parseRawEmail(content);
                 if (!parsed) continue;
+
+                // Skip if a matching email already exists
+                if (existingKeys.has(EmailService.dedupKey(parsed))) {
+                    continue;
+                }
 
                 const email: Partial<EmailEntity> = {
                     eid: nanoid(12),
@@ -188,13 +196,12 @@ export class EmailService {
                     text: parsed.text || "",
                     time: parsed.time || Date.now(),
                     account_id: parsed.account_id || "",
-                    raw_path: fullPath,
                 };
 
                 await emailRepository.insert(email);
+                existingKeys.add(EmailService.dedupKey(email));
                 imported++;
 
-                // Trigger forwarding strategies
                 const { StrategyService } = await import("../strategy/strategy.service");
                 StrategyService.matchAndForward(email as any).catch(e => {
                     console.error("[EmailService] Strategy forward failed:", e);
@@ -212,16 +219,17 @@ export class EmailService {
      * Simple MIME parser — extracts headers and body.
      */
     static async importFromFile(filePath: string): Promise<EmailEntity | null> {
-        const normalizedPath = filePath.replace(/\\/g, "/");
-
-        // Dedup: skip if this file was already imported (even if soft-deleted)
-        const existing = await emailRepository.findIgnoreDelete({ raw_path: normalizedPath } as any);
-        if (existing) return null;
+        const resolvedPath = path.resolve(filePath);
 
         try {
-            const content = fs.readFileSync(filePath, "utf-8");
+            const content = fs.readFileSync(resolvedPath, "utf-8");
             const parsed = EmailService.parseRawEmail(content);
             if (!parsed) return null;
+
+            // Dedup by content fingerprint (from+to+subject+time), even if soft-deleted
+            const dedupKey = EmailService.dedupKey(parsed);
+            const allEmails = await emailRepository.findAllIgnoreDelete();
+            if (allEmails.some(e => EmailService.dedupKey(e) === dedupKey)) return null;
 
             const email: Partial<EmailEntity> = {
                 eid: nanoid(12),
@@ -232,7 +240,6 @@ export class EmailService {
                 text: parsed.text || "",
                 time: parsed.time || Date.now(),
                 account_id: parsed.account_id || "",
-                raw_path: filePath,
             };
 
             return await emailRepository.insert(email);
