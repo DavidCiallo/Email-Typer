@@ -28,6 +28,7 @@ async function list(request: EmailListRequest) {
         from: e.from,
         to: e.to,
         subject: e.subject,
+        html: e.html,
         text: e.text,
         time: e.time,
         account_id: e.account_id,
