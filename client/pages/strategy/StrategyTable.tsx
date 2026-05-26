@@ -1,31 +1,12 @@
-import { Button, closeAll, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
+import { Button, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
 import { keyLables } from "./StrategyEnums";
-import { toast } from "../../methods/notify";
 
 const StrategyTable = (params: {
     strategyList: Array<any>,
-    setStrategyContentOpen: Function,
-    focusStrategy: Function
-    deleteStrategy: Function
+    openEdit: Function,
+    deleteStrategy: Function,
 }) => {
-    const { strategyList, setStrategyContentOpen, focusStrategy, deleteStrategy } = params;
-
-    function toDelete(email: any) {
-        toast({
-            title: "仅删除策略，邮箱仍会保留",
-            hideIcon: true,
-            hideCloseButton: true,
-            endContent: (
-                <Button
-                    color="danger" size="sm" variant="bordered"
-                    onClick={() => { deleteStrategy(email); closeAll(); }}
-                >
-                    确认删除
-                </Button>
-            ),
-        })
-    }
-
+    const { strategyList, openEdit, deleteStrategy } = params;
     return (
         <Table aria-label="table" isStriped>
             <TableHeader>
@@ -38,37 +19,35 @@ const StrategyTable = (params: {
             <TableBody>
                 {strategyList.map((row, index) =>
                     <TableRow key={index}>
-                        <TableCell className="w-80">
-                            <div>
-                                <span className="mr-1">
-                                    {row.email.split(" ")[0].replace(/[\"]/g, "")}
-                                </span>
+                        <TableCell className="w-40">
+                            <div>{row.name}</div>
+                        </TableCell>
+                        <TableCell className="w-60">
+                            <div>{row.from_pattern}</div>
+                        </TableCell>
+                        <TableCell className="w-60">
+                            <div>{row.to_pattern}</div>
+                        </TableCell>
+                        <TableCell className="w-60">
+                            <div>{row.forward_to}</div>
+                        </TableCell>
+                        <TableCell className="w-40">
+                            <div className="flex flex-row gap-2">
+                                <Button
+                                    size="sm" color="primary" variant="bordered"
+                                    className="h-7 text-primary"
+                                    onClick={() => openEdit(row)}
+                                >
+                                    修改
+                                </Button>
+                                <Button
+                                    size="sm" color="danger" variant="bordered"
+                                    className="h-7"
+                                    onClick={() => { deleteStrategy(row) }}
+                                >
+                                    删除
+                                </Button>
                             </div>
-                        </TableCell>
-                        <TableCell className="w-80">
-                            <div className="">{row.forward}</div>
-                        </TableCell>
-                        <TableCell className="min-w-32">
-                            <div className="">{row.comment}</div>
-                        </TableCell>
-                        <TableCell className="min-w-20">
-                            <div className="">{row.creater}</div>
-                        </TableCell>
-                        <TableCell className="flex flex-row justify-center">
-                            <Button
-                                size="sm" color="primary" variant="bordered"
-                                className="mr-1 h-7 text-primary"
-                                onClick={() => { setStrategyContentOpen(true); focusStrategy(row) }}
-                            >
-                                修改
-                            </Button>
-                            <Button
-                                size="sm" color="danger" variant="bordered"
-                                className="h-7 text-danger"
-                                onClick={() => { toDelete(row) }}
-                            >
-                                删除
-                            </Button>
                         </TableCell>
                     </TableRow>
                 )}

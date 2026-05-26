@@ -20,8 +20,8 @@ const SenderPage = () => {
         if (justSend) return toast({ title: "发送频率过高，请稍等", color: "danger" });
         setJustSend(true);
         setTimeout(() => setJustSend(false), 5000);
-        EmailRouter.requestSendMail({ name, to, subject, html }, () => {
-            return toast({ title: "发送成功", color: "primary" });
+        EmailRouter.send({ email: { to, subject, html } }, (res: any) => {
+            if (res.success) addToast({ title: "发送成功", color: "primary" });
         })
     }
     return (
@@ -60,17 +60,9 @@ const SenderPage = () => {
                         />
                     </CardBody>
                 </Card>
-                <div className="mx-auto w-3/4 md:mx-0 md:w-100 mt-5 flex flex-col md:flex-row justify-between items-center">
-                    <Input
-                        placeholder="发件邮箱"
-                        className="w-full md:mr-6 my-2"
-                        variant="underlined"
-                        endContent={<div className="w-full text-sm text-gray-600">{emailhost}</div>}
-                        value={name}
-                        onValueChange={e => setName(e.toLocaleLowerCase())}
-                    />
+                <div className="mx-auto w-3/4 md:mx-0 md:w-100 mt-5 flex flex-col md:flex-row justify-end items-center">
                     <Button
-                        color={(justSend || !name.length) ? "default" : "primary"}
+                        color={justSend ? "default" : "primary"}
                         className="my-2" onClick={sendEmail}
                     >
                         发送邮件

@@ -3,5 +3,4 @@
 dist
 node_modules
 data/*
-email_data/*
-home
+eml/*

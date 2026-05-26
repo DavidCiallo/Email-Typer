@@ -1,18 +1,47 @@
-import { Button, Spinner, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
-import { keyLables } from "./InboxEnums";
-import { formatEmail } from "../../methods/format";
+import { Button, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
+
+function formatTime(ts: number): string {
+    const d = new Date(ts);
+    const now = new Date();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const time = d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+
+    // Today: only time
+    if (d.toDateString() === now.toDateString()) {
+        return `今天 ${time}`;
+    }
+    // Yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) {
+        return `昨天 ${time}`;
+    }
+    // This year: month-day + time
+    if (d.getFullYear() === now.getFullYear()) {
+        return `${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")} ${time}`;
+    }
+    // Previous years: full date
+    return `${d.getFullYear()}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
 
 const InboxTable = (params: {
-    emailList: Array<any>;
-    isLoading: boolean;
-    setEmailContentOpen: Function;
-    setFocusEmail: Function;
+    emailList: Array<any>,
+    setEmailContentOpen: Function,
+    setFocusEmail: Function,
+    onArchive: (id: string) => void,
 }) => {
-    const { emailList, setEmailContentOpen, setFocusEmail, isLoading } = params;
+    const { emailList, setEmailContentOpen, setFocusEmail, onArchive } = params;
     return (
         <Table aria-label="table" isStriped>
             <TableHeader>
-                {keyLables.map((item, index) => {
+                {[
+                    { key: "from", label: "发件人" },
+                    { key: "to", label: "收件人" },
+                    { key: "subject", label: "主题" },
+                    { key: "time", label: "时间" },
+                    { key: "action", label: "操作" },
+                ].map((item, index) => {
                     return (
                         <TableColumn width={40} key={index} align="center">
                             {item.label}
@@ -40,36 +69,32 @@ const InboxTable = (params: {
                                 </div>
                             </div>
                         </TableCell>
-                        <TableCell className="min-w-40 max-w-40">
-                            <div className="text-sm ml-1">
-                                <span>{formatEmail(email.to.split(", ")[0]).email}</span>
-                                <span>{email.to.split(", ").length > 1 ? "👥" : ""}</span>
-                            </div>
+                        <TableCell className="w-50">
+                            <div>{row.to}</div>
                         </TableCell>
-                        <TableCell className="min-w-60">
-                            <span>{email.subject?.slice(0, 36)}</span>
-                            <span>{email.subject?.length > 36 ? "......" : ""}</span>
+                        <TableCell className="w-80">
+                            <div>{row.subject}</div>
                         </TableCell>
-
-                        <TableCell className="w-32">
-                            <div>
-                                {new Date(Number(email.time)).toLocaleDateString()?.slice(5) + " "}
-                                {new Date(Number(email.time)).toLocaleTimeString()?.slice(0, -3)}
-                            </div>
+                        <TableCell className="w-30">
+                            <div>{formatTime(Number(row.time))}</div>
                         </TableCell>
-                        <TableCell>
-                            <div className="flex flex-row justify-center">
+                        <TableCell className="w-40">
+                            <div className="flex flex-row gap-2 justify-center">
                                 <Button
-                                    size="sm"
-                                    color="primary"
+                                    size="sm" color="primary"
                                     variant="bordered"
                                     className="h-7 text-primary"
-                                    onClick={() => {
-                                        setEmailContentOpen(true);
-                                        setFocusEmail(email);
-                                    }}
+                                    onClick={() => { setEmailContentOpen(true); setFocusEmail(row) }}
                                 >
                                     查看
+                                </Button>
+                                <Button
+                                    size="sm" color="warning"
+                                    variant="bordered"
+                                    className="h-7 text-warning"
+                                    onClick={() => onArchive(row.id)}
+                                >
+                                    归档
                                 </Button>
                             </div>
                         </TableCell>

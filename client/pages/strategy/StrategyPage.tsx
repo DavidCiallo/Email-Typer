@@ -1,67 +1,53 @@
 import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
 import { StrategyRouter } from "../../api/instance";
-import StrategyContentModal from "./StrategyContent";
-import { StrategyBodyRequest, StrategyDeleteRequest, StrategyListResponse } from "../../../shared/router/StrategyRouter";
-import { StrategyImpl } from "../../../shared/impl";
+import StrategyFormModal from "./StrategyFormModal";
 import StrategyList from "./StrategyList";
 import StrategyTable from "./StrategyTable";
-import { Button, closeAll, Input } from "@heroui/react";
-import InboxAddStrategy from "../inbox/InboxAddStrategy";
+import { Button, Input } from "@heroui/react";
 import { toast } from "../../methods/notify";
 
 const StrategyPage = () => {
-    const [strategyList, setStrategyList] = useState<StrategyImpl[]>([]);
-    const [focusStrategy, setFocusStrategy] = useState<StrategyImpl | null>(null);
-    const [isStrategyContentOpen, setStrategyContentOpen] = useState(false);
-    const [isEmailAddStrategyOpen, setEmailAddStrategyOpen] = useState(false);
+    const [strategyList, setStrategyList] = useState<any[]>([]);
+    const [focusStrategy, setFocusStrategy] = useState<any | null>(null);
+    const [isModalOpen, setModalOpen] = useState(false);
 
-    function submitAddStrategy(body: StrategyBodyRequest) {
-        StrategyRouter.requestSaveStrategy(body, () => {
-            toast({
-                title: "添加成功",
-                color: "primary",
-                hideCloseButton: true,
-                endContent: (<div onClick={closeAll}>✖</div>)
-            });
-            setEmailAddStrategyOpen(false);
-        });
-        StrategyRouter.queryStrategyList({ page: 1 }, (res: StrategyListResponse) => {
-            setStrategyContentOpen(false);
-            setStrategyList(res.list);
+    function refreshList() {
+        StrategyRouter.list({}, (data: any) => {
+            const result = data.data || data;
+            setStrategyList(result.list || []);
         });
     }
 
-    function submitSaveStrategy(body: StrategyBodyRequest) {
-        StrategyRouter.requestSaveStrategy(body, () => {
-            toast({
-                title: "修改成功",
-                color: "primary",
-                hideCloseButton: true,
-                endContent: (<div onClick={closeAll}>✖</div>)
-            });
-            setEmailAddStrategyOpen(false);
-        });
-        StrategyRouter.queryStrategyList({ page: 1 }, (res: StrategyListResponse) => {
-            setStrategyContentOpen(false);
-            setStrategyList(res.list);
+    function submitSave(body: any) {
+        StrategyRouter.save({ strategy: body }, () => {
+            toast({ title: body.id ? "修改成功" : "添加成功", color: "primary" });
+            setModalOpen(false);
+            setFocusStrategy(null);
+            refreshList();
         });
     }
 
-    function submitDeleteStrategy(body: StrategyDeleteRequest) {
-        const { email, creater } = body;
-        StrategyRouter.requestDeleteStrategy({ email, creater });
-        StrategyRouter.queryStrategyList({ page: 1 }, (res: StrategyListResponse) => {
-            setStrategyContentOpen(false);
-            setStrategyList(res.list);
+    function submitDelete(item: any) {
+        StrategyRouter.delete({ id: item.id }, () => {
+            toast({ title: "删除成功", color: "primary" });
+            refreshList();
         });
+    }
+
+    function openCreate() {
+        setFocusStrategy(null);
+        setModalOpen(true);
+    }
+
+    function openEdit(row: any) {
+        setFocusStrategy(row);
+        setModalOpen(true);
     }
 
     useEffect(() => {
-        StrategyRouter.queryStrategyList({ page: 1 }, (data: StrategyListResponse) => {
-            setStrategyList(data.list);
-        })
-    }, [])
+        refreshList();
+    }, []);
 
     return (
         <div className="max-w-screen">
@@ -77,10 +63,7 @@ const StrategyPage = () => {
                         onValueChange={(v) => localStorage.setItem("default_forward", v)}
                     />
                     <Button
-                        onClick={() => {
-                            setEmailAddStrategyOpen(true);
-                            localStorage.setItem("pause", "1");
-                        }}
+                        onClick={openCreate}
                         color="primary" variant="bordered" className="ml-2 text-primary"
                     >
                         新建策略
@@ -89,42 +72,26 @@ const StrategyPage = () => {
                 <div className="w-full hidden md:block">
                     <StrategyTable
                         strategyList={strategyList}
-                        setStrategyContentOpen={setStrategyContentOpen}
-                        focusStrategy={setFocusStrategy}
-                        deleteStrategy={submitDeleteStrategy}
+                        openEdit={openEdit}
+                        deleteStrategy={submitDelete}
                     />
                 </div>
                 <div className="w-full block sm:hidden">
                     <StrategyList
                         strategyList={strategyList}
-                        setStrategyContentOpen={setStrategyContentOpen}
-                        focusStrategy={setFocusStrategy}
-                        deleteStrategy={submitDeleteStrategy}
+                        openEdit={openEdit}
+                        deleteStrategy={submitDelete}
                     />
                 </div>
             </div>
-            {focusStrategy && <StrategyContentModal
-                email={focusStrategy}
-                isOpen={isStrategyContentOpen}
-                onOpenChange={setStrategyContentOpen}
-                onSubmit={submitSaveStrategy}
-            />}
-            {
-                <InboxAddStrategy
-                    isOpen={isEmailAddStrategyOpen}
-                    onOpenChange={(v: boolean) => {
-                        setEmailAddStrategyOpen(v);
-                        if (!v) localStorage.setItem("pause", "0");
-                    }}
-                    onSubmit={(data) => {
-                        submitAddStrategy(data);
-                        localStorage.setItem("pause", "0");
-                    }}
-                />
-            }
+            <StrategyFormModal
+                isOpen={isModalOpen}
+                onOpenChange={(v) => { setModalOpen(v); if (!v) setFocusStrategy(null); }}
+                onSubmit={submitSave}
+                strategy={focusStrategy}
+            />
         </div>
     )
 };
-
 
 export default StrategyPage;

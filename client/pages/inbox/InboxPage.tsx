@@ -1,57 +1,55 @@
 import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
-import { EmailImpl } from "../../../shared/impl";
 import { EmailRouter, StrategyRouter } from "../../api/instance";
-import { Button, closeAll, Pagination } from "@heroui/react";
+import { Button, Pagination } from "@heroui/react";
 import EmailContentModal from "./InboxContent";
-import { EmailListResponse } from "../../../shared/router/EmailRouter";
-import InboxAddStrategy from "./InboxAddStrategy";
-import { StrategyBodyRequest } from "../../../shared/router/StrategyRouter";
-import { notify, toast } from "../../methods/notify";
+import StrategyFormModal from "../strategy/StrategyFormModal";
+import { toast } from "../../methods/notify";
 import InboxTable from "./InboxTable";
 import InboxList from "./InboxList";
 
 const EmailPage = () => {
-    const [allEmailList, setAllEmailList] = useState<EmailImpl[]>([]);
+    const [allEmailList, setAllEmailList] = useState<any[]>([]);
     const [total, setTotal] = useState<number>(0);
     const [page, setPage] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
 
-    const [focusEmail, setFocusEmail] = useState<EmailImpl | null>(null);
+    const [focusEmail, setFocusEmail] = useState<any | null>(null);
     const [isEmailContentOpen, setEmailContentOpen] = useState(false);
-    const [isEmailAddStrategyOpen, setEmailAddStrategyOpen] = useState(false);
+    const [isStrategyOpen, setStrategyOpen] = useState(false);
 
     const [accountList, setAccountList] = useState<Array<string>>([]);
 
-    function submitAddStrategy(body: StrategyBodyRequest) {
-        StrategyRouter.requestSaveStrategy(body, () => {
-            toast({
-                title: "添加成功",
-                color: "primary",
-                hideCloseButton: true,
-                endContent: <div onClick={closeAll}>✖</div>,
-            });
-            setEmailAddStrategyOpen(false);
+    function submitAddStrategy(body: any) {
+        StrategyRouter.save({ strategy: body }, () => {
+            toast({ title: "添加成功", color: "primary" });
+            setStrategyOpen(false);
         });
     }
 
-    function renderEmail(data: EmailListResponse) {
-        if (localStorage.getItem("pause") === "1") return;
-        setTotal(data.total);
-        setAllEmailList(data.list);
+    function renderEmail(data: any) {
+        const result = data.data || data;
+        setTotal(result.total || 0);
+        setAllEmailList(result.list || []);
         setIsLoading(false);
 
-        const accountList = Array.from(new Set(data.list.map((email) => email.to)));
+        const accountList: string[] = Array.from(new Set((result.list || []).map((email: any) => email.to)));
         setAccountList(accountList);
     }
 
+    function queryEmails() {
+        setIsLoading(true);
+        EmailRouter.list({ offset: (page - 1) * 10, limit: 10 }, renderEmail);
+    }
+
     useEffect(() => {
-        localStorage.setItem("pause", "0");
-        if (!localStorage.getItem("emailNum")) {
-            localStorage.setItem("emailNum", "0");
-        }
-        EmailRouter.queryEmailList({ page }, renderEmail);
+        EmailRouter.list({ offset: 0, limit: 10 }, renderEmail);
     }, []);
+
+    function openStrategyForEmail(emailAddr: string) {
+        // Pre-fill the to_pattern with the email address from inbox
+        setStrategyOpen(true);
+    }
 
     return (
         <div className="max-w-screen">
@@ -63,32 +61,37 @@ const EmailPage = () => {
                             <Pagination
                                 initialPage={1}
                                 total={Math.ceil(total / 10)}
-                                onChange={(page: number) => {
-                                    setPage(page);
+                                onChange={(newPage: number) => {
+                                    setPage(newPage);
                                     setIsLoading(true);
-                                    EmailRouter.queryEmailList({ page }, renderEmail);
+                                    EmailRouter.list({ offset: (newPage - 1) * 10, limit: 10 }, renderEmail);
                                 }}
                             />
                         )}
                     </div>
                     <Button
-                        onClick={() => {
-                            setEmailAddStrategyOpen(true);
-                            localStorage.setItem("pause", "1");
-                        }}
+                        onClick={() => setStrategyOpen(true)}
                         color="primary"
                         variant="bordered"
                         className="text-primary"
                     >
-                        新建邮箱
+                        新建策略
                     </Button>
                 </div>
                 <div className="w-full hidden md:block">
                     <InboxTable
                         emailList={allEmailList}
-                        isLoading={isLoading}
                         setEmailContentOpen={setEmailContentOpen}
                         setFocusEmail={setFocusEmail}
+                        onArchive={(id) => {
+                            EmailRouter.delete({ id }, (res: any) => {
+                                if (res.success) {
+                                    queryEmails();
+                                } else {
+                                    toast({ title: res.message || "归档失败", color: "danger" });
+                                }
+                            });
+                        }}
                     />
                 </div>
                 <div className="w-full block sm:hidden">
@@ -103,19 +106,11 @@ const EmailPage = () => {
             {focusEmail && (
                 <EmailContentModal email={focusEmail} isOpen={isEmailContentOpen} onOpenChange={setEmailContentOpen} />
             )}
-            {
-                <InboxAddStrategy
-                    isOpen={isEmailAddStrategyOpen}
-                    onOpenChange={(v: boolean) => {
-                        setEmailAddStrategyOpen(v);
-                        if (!v) localStorage.setItem("pause", "0");
-                    }}
-                    onSubmit={(data) => {
-                        submitAddStrategy(data);
-                        localStorage.setItem("pause", "0");
-                    }}
-                />
-            }
+            <StrategyFormModal
+                isOpen={isStrategyOpen}
+                onOpenChange={setStrategyOpen}
+                onSubmit={submitAddStrategy}
+            />
         </div>
     );
 };

@@ -21,8 +21,5 @@
     "noUnusedParameters": true,
     "strictPropertyInitialization": false
   },
-  "include": [
-    "shared",
-    "client"
-  ]
+  "include": ["shared", "server"]
 }

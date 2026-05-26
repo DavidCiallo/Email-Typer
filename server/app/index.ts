@@ -1,35 +1,46 @@
 import { config } from "dotenv";
-import cors from "cors";
-import path from "path";
-
 config();
 
-// 中间件-pg
-// 中间件-express
-import express from "express";
-import bodyParser from "body-parser";
-import { WebSocketServer } from "ws";
+import { fileURLToPath } from "url";
+import path from "path";
+import { initialize } from "./initialize";
 
-// 中间件-各级路由
-import { mounthttp } from "../lib/mount";
-import { emailController } from "../controller/email.controller";
-import { authController } from "../controller/auth.controller";
-import { strategyController } from "../controller/strategy.controller";
+const __filename = fileURLToPath(import.meta.url);
+const staticPath = path.resolve(path.dirname(__filename), "../../dist");
 
-const app = express();
-app.use(bodyParser.json()).use(cors());
+import { mounthttp, mountstatic } from "../lib/mount";
+import { authMount } from "../modules/auth/auth.controller";
+import { emailMount } from "../modules/email/email.controller";
+import { strategyMount } from "../modules/strategy/strategy.controller";
+import { accountMount } from "../modules/account/account.controller";
+import { settingsMount } from "../modules/settings/settings.controller";
 
-mounthttp(app, [emailController, strategyController, authController]);
+const PORT = parseInt(process.env.SERVER_PORT || "3300");
 
-const staticPath = path.join(__dirname, "..", "..", "dist");
-app.use(express.static(staticPath));
-app.use((q, s, n) => (q.path.endsWith(".mjs") ? s.status(403).send("Forbidden") : n()));
-app.get(/.*/, (q, s) =>
-    q.path.startsWith("/api")
-        ? s.status(404).json({ error: "API not found" })
-        : s.sendFile(path.join(staticPath, "index.html")),
-);
+await initialize();
 
-app.listen(process.env.SERVER_HTTP_PORT, async () => {
-    console.log(`App http listening at http://localhost:${process.env.SERVER_HTTP_PORT}`);
+// @ts-ignore
+Bun.serve({
+    port: PORT,
+    idleTimeout: 255,
+    async fetch(req: Request) {
+        const url = new URL(req.url);
+        const pathName = url.pathname;
+
+        const apiResponse = await mounthttp(req, [
+            authMount,
+            emailMount,
+            strategyMount,
+            accountMount,
+            settingsMount,
+        ]);
+        if (apiResponse) return apiResponse;
+
+        const staticResponse = await mountstatic(staticPath, pathName);
+        if (staticResponse) return staticResponse;
+
+        return new Response("Not Found", { status: 404 });
+    },
 });
+
+console.log(`\nServer is running at http://localhost:${PORT}`);
