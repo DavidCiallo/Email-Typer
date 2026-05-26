@@ -75,8 +75,11 @@ export function buildVerificationEmail(verifyUrl: string): { subject: string; ht
 
 export class EmailService {
     static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number }): Promise<{ list: EmailEntity[]; total: number }> {
-        const list = await emailRepository.find(where, { ...config, orderBy: "time", orderDir: "desc" });
-        const total = await emailRepository.count(where);
+        const all = await emailRepository.find(where);
+        all.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
+        const total = all.length;
+        const { limit, offset = 0 } = config ?? {};
+        const list = limit !== undefined ? all.slice(offset, offset + limit) : all;
         return { list, total };
     }
 
