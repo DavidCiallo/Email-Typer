@@ -173,7 +173,7 @@ class Repository<
 
     async find(
         where?: Partial<T>,
-        config?: { limit?: number; offset?: number; since?: number },
+        config?: { limit?: number; offset?: number; since?: number; orderBy?: string; orderDir?: "asc" | "desc" },
     ): Promise<T[]> {
         const results: T[] = [];
         const since = config?.since;
@@ -187,7 +187,16 @@ class Repository<
             if (where && !matches(row, where as Record<string, any>)) continue;
 
             results.push(row as T);
-            if (limit !== undefined && results.length >= offset + limit) break;
+        }
+
+        // Sort if an orderBy field is specified
+        if (config?.orderBy) {
+            const dir = config?.orderDir === "asc" ? 1 : -1;
+            results.sort((a, b) => {
+                const av = (a as any)[config!.orderBy!] ?? 0;
+                const bv = (b as any)[config!.orderBy!] ?? 0;
+                return av > bv ? dir : av < bv ? -dir : 0;
+            });
         }
 
         if (offset > 0 || limit !== undefined) {
