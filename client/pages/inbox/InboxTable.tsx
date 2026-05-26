@@ -1,6 +1,4 @@
 import { Button, Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@heroui/react";
-import { keyLables } from "./InboxEnums";
-
 
 const InboxTable = (params: {
     emailList: Array<any>,
@@ -11,7 +9,14 @@ const InboxTable = (params: {
     return (
         <Table aria-label="table" isStriped>
             <TableHeader>
-                {keyLables.map((item, index) => {
+                {[
+                    { key: "from", label: "发件人" },
+                    { key: "to", label: "收件人" },
+                    { key: "subject", label: "主题" },
+                    { key: "content", label: "内容" },
+                    { key: "time", label: "时间" },
+                    { key: "action", label: "查看" },
+                ].map((item, index) => {
                     return (
                         <TableColumn key={index} align="center">{item.label}</TableColumn>
                     )

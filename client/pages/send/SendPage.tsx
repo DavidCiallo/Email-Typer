@@ -11,14 +11,14 @@ const SenderPage = () => {
     const [justSend, setJustSend] = useState(false);
 
     async function sendEmail() {
-        if (to.length < 2 || !to.includes("@")) return toast({ title: "请填写正确的邮箱地址", color: "danger" });
-        if (!subject.length) return toast({ title: "请填写邮件标题", color: "danger" });
-        if (!html.length) return toast({ title: "请填写邮件内容", color: "danger" });
-        if (justSend) return toast({ title: "发送频率过高，请稍等", color: "danger" });
+        if (to.length < 2 || !to.includes("@")) return addToast({ title: "请填写正确的邮箱地址", color: "danger" });
+        if (!subject.length) return addToast({ title: "请填写邮件标题", color: "danger" });
+        if (!html.length) return addToast({ title: "请填写邮件内容", color: "danger" });
+        if (justSend) return addToast({ title: "发送频率过高，请稍等", color: "danger" });
         setJustSend(true);
         setTimeout(() => setJustSend(false), 5000);
         EmailRouter.send({ email: { to, subject, html } }, (res: any) => {
-            if (res.success) toast({ title: "发送成功", color: "primary" });
+            if (res.success) addToast({ title: "发送成功", color: "primary" });
         })
     }
     return (

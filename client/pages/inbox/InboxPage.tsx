@@ -1,9 +1,9 @@
 import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
 import { EmailRouter, StrategyRouter } from "../../api/instance";
-import { Button, closeAll, Pagination } from "@heroui/react";
+import { Button, Pagination } from "@heroui/react";
 import EmailContentModal from "./InboxContent";
-import InboxAddStrategy from "./InboxAddStrategy";
+import StrategyFormModal from "../strategy/StrategyFormModal";
 import { toast } from "../../methods/notify";
 import InboxTable from "./InboxTable";
 import InboxList from "./InboxList";
@@ -16,24 +16,18 @@ const EmailPage = () => {
 
     const [focusEmail, setFocusEmail] = useState<any | null>(null);
     const [isEmailContentOpen, setEmailContentOpen] = useState(false);
-    const [isEmailAddStrategyOpen, setEmailAddStrategyOpen] = useState(false);
+    const [isStrategyOpen, setStrategyOpen] = useState(false);
 
     const [accountList, setAccountList] = useState<Array<string>>([]);
 
     function submitAddStrategy(body: any) {
         StrategyRouter.save({ strategy: body }, () => {
-            toast({
-                title: "添加成功",
-                color: "primary",
-                hideCloseButton: true,
-                endContent: <div onClick={closeAll}>✖</div>,
-            });
-            setEmailAddStrategyOpen(false);
+            toast({ title: "添加成功", color: "primary" });
+            setStrategyOpen(false);
         });
     }
 
     function renderEmail(data: any) {
-        if (localStorage.getItem("pause") === "1") return;
         const result = data.data || data;
         setTotal(result.total || 0);
         setAllEmailList(result.list || []);
@@ -49,12 +43,13 @@ const EmailPage = () => {
     }
 
     useEffect(() => {
-        localStorage.setItem("pause", "0");
-        if (!localStorage.getItem("emailNum")) {
-            localStorage.setItem("emailNum", "0");
-        }
         EmailRouter.list({ offset: 0, limit: 10 }, renderEmail);
     }, []);
+
+    function openStrategyForEmail(emailAddr: string) {
+        // Pre-fill the to_pattern with the email address from inbox
+        setStrategyOpen(true);
+    }
 
     return (
         <div className="max-w-screen">
@@ -75,15 +70,12 @@ const EmailPage = () => {
                         )}
                     </div>
                     <Button
-                        onClick={() => {
-                            setEmailAddStrategyOpen(true);
-                            localStorage.setItem("pause", "1");
-                        }}
+                        onClick={() => setStrategyOpen(true)}
                         color="primary"
                         variant="bordered"
                         className="text-primary"
                     >
-                        新建邮箱
+                        新建策略
                     </Button>
                 </div>
                 <div className="w-full hidden md:block">
@@ -106,19 +98,11 @@ const EmailPage = () => {
             {focusEmail && (
                 <EmailContentModal email={focusEmail} isOpen={isEmailContentOpen} onOpenChange={setEmailContentOpen} />
             )}
-            {
-                <InboxAddStrategy
-                    isOpen={isEmailAddStrategyOpen}
-                    onOpenChange={(v: boolean) => {
-                        setEmailAddStrategyOpen(v);
-                        if (!v) localStorage.setItem("pause", "0");
-                    }}
-                    onSubmit={(data) => {
-                        submitAddStrategy(data);
-                        localStorage.setItem("pause", "0");
-                    }}
-                />
-            }
+            <StrategyFormModal
+                isOpen={isStrategyOpen}
+                onOpenChange={setStrategyOpen}
+                onSubmit={submitAddStrategy}
+            />
         </div>
     );
 };

@@ -9,6 +9,17 @@ interface props {
     onOpenChange: any,
 }
 
+function replaceUrls(html: string): string {
+    if (!html) return html;
+    return html.replace(
+        /(https?:\/\/[^\s<>"')\]]+)/g,
+        (url) => {
+            const clean = url.replace(/[.,;:!?)\]}>]+$/, "");
+            return `<span class="inline-flex items-center gap-1 mx-0.5 align-baseline"><span class="text-xs">[网络链接]</span> <a href="${clean}" target="_blank" rel="noopener" class="text-primary text-xs cursor-pointer underline" data-url="${clean}">打开</a> <a class="text-primary text-xs cursor-pointer underline" data-url="${clean}" onclick="event.preventDefault();navigator.clipboard.writeText('${clean.replace(/'/g, "\\'")}');this.textContent='已复制';setTimeout(()=>this.textContent='复制',1500)">复制</a></span>`;
+        }
+    );
+}
+
 const InboxContentModal = ({
     email,
     isOpen,
@@ -61,7 +72,7 @@ const InboxContentModal = ({
                         </Chip>
                         <div
                             className="border-1 border-gray-300 rounded-lg p-2 mt-2 w-full overflow-auto"
-                            dangerouslySetInnerHTML={{ __html: email.html || email.text }}
+                            dangerouslySetInnerHTML={{ __html: replaceUrls(email.html || email.text || "") }}
                         />
                     </div>
                 </div>
@@ -72,38 +83,8 @@ const InboxContentModal = ({
     const ModalFooterContent = () => {
         return (<>
             {
-                (email.text || email.html || "")?.match(/(https?:\/\/[^\s]+)/g)
-                    ?.map((url: string) => url.split("]")[0])
-                    .filter(
-                        (url: string) => {
-                            const usualStaticEnd = [".com", ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".aspx"];
-                            const notfile = !usualStaticEnd.some(end => url.endsWith(end));
-                            const useful = url.split("/").slice(-1)[0].length > 16 || url.includes("?");
-                            return notfile && useful;
-                        }
-                    )
-                    .filter((url: string, index: number, self: string[]) => self.indexOf(url) === index)
-                    .map((url: string, index: number) => {
-                        return (
-                            <Button
-                                key={index} color="primary" size="sm" variant="light"
-                                onClick={() => {
-                                    copytext(url);
-                                    toast({
-                                        color: "success",
-                                        title: `链接${index + 1} 复制成功`,
-                                        description: url.slice(0, 36) + "..."
-                                    })
-                                }}
-                            >
-                                可用链接 {index + 1}
-                            </Button>
-                        )
-                    })
-            }
-            {
                 (email.text || email.html || "")?.match(/\d{6}/g)
-                    ?.filter((url: string, index: number, self: string[]) => self.indexOf(url) === index)
+                    ?.filter((code: string, index: number, self: string[]) => self.indexOf(code) === index)
                     .map((code: string, index: number) => {
                         return (
                             <Button

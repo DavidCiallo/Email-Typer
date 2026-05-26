@@ -4,9 +4,9 @@ interface KeyLable {
 }
 
 export const keyLables: Array<KeyLable> = [
-    { key: "name", label: "名称" },
-    { key: "from_pattern", label: "发件匹配" },
+    { key: "name", label: "策略名称" },
+    { key: "from_pattern", label: "发件人" },
+    { key: "to_pattern", label: "收件人" },
     { key: "forward_to", label: "转发邮箱" },
-    { key: "account_id", label: "创建者" },
     { key: "action", label: "操作" },
 ];

@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button, Input, Link, Form } from "@heroui/react";
+import { Button, Input, Link, Form, addToast } from "@heroui/react";
 import { AuthRouter } from "../../api/instance";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { toast } from "../../methods/notify";
 
 export default function Component() {
     const navigate = useNavigate();
@@ -16,10 +15,10 @@ export default function Component() {
     if (token) {
         AuthRouter.verify({ token }, (res: any) => {
             if (res.success) {
-                toast({ title: "邮箱验证成功，请登录", color: "success" });
+                addToast({ title: "邮箱验证成功，请登录", color: "success" });
                 navigate("/auth");
             } else {
-                toast({ title: res.message || "验证失败", color: "danger" });
+                addToast({ title: res.message || "验证失败", color: "danger" });
             }
         });
     }
@@ -31,12 +30,12 @@ export default function Component() {
         window.addEventListener("login", async (e: any) => {
             const loginResult = e.detail;
             if (loginResult.success && loginResult.data?.token) {
-                toast({ title: "登录成功", color: "success" });
+                addToast({ title: "登录成功", color: "success" });
                 localStorage.setItem("token", loginResult.data.token);
                 await new Promise(r => setTimeout(r, 500));
                 navigate("/inbox");
             } else {
-                toast({ title: loginResult.message || "登录失败，请检查密码", color: "danger" });
+                addToast({ title: loginResult.message || "登录失败，请检查密码", color: "danger" });
             }
         }, { once: true });
     };
@@ -48,10 +47,10 @@ export default function Component() {
         window.addEventListener("register", async (e: any) => {
             const res = e.detail;
             if (res.success && res.data?.needs_verification) {
-                toast({ title: "注册成功，请查看邮箱完成验证", color: "success" });
+                addToast({ title: "注册成功，请查看邮箱完成验证", color: "success" });
                 setIsRegister(false);
             } else {
-                toast({ title: res.message || "注册失败，邮箱可能已存在", color: "danger" });
+                addToast({ title: res.message || "注册失败，邮箱可能已存在", color: "danger" });
             }
         }, { once: true });
     };
@@ -90,7 +89,7 @@ export default function Component() {
                             />
                             <div className="flex w-full items-center justify-end px-1 py-2">
                                 <Link className="text-default-500 cursor-pointer" size="sm" onClick={
-                                    () => toast({ title: "请联系管理员🙁", color: "danger" })
+                                    () => addToast({ title: "请联系管理员🙁", color: "danger" })
                                 }>
                                     忘记密码？
                                 </Link>
