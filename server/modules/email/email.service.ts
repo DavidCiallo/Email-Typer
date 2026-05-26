@@ -142,9 +142,9 @@ export class EmailService {
             throw `Path is not a directory: ${dirPath}`;
         }
 
-        // Build set of known raw_paths for dedup
+        // Build set of known raw_paths for dedup (include soft-deleted to prevent re-import)
         const existingPaths = new Set<string>();
-        const allEmails = await emailRepository.find();
+        const allEmails = await emailRepository.findAllIgnoreDelete();
         for (const e of allEmails) {
             if (e.raw_path) existingPaths.add(e.raw_path.replace(/\\/g, "/"));
         }
@@ -214,9 +214,9 @@ export class EmailService {
     static async importFromFile(filePath: string): Promise<EmailEntity | null> {
         const normalizedPath = filePath.replace(/\\/g, "/");
 
-        // Dedup: skip if this file was already imported
-        const existing = await emailRepository.find({ raw_path: normalizedPath } as any);
-        if (existing.length > 0) return null;
+        // Dedup: skip if this file was already imported (even if soft-deleted)
+        const existing = await emailRepository.findIgnoreDelete({ raw_path: normalizedPath } as any);
+        if (existing) return null;
 
         try {
             const content = fs.readFileSync(filePath, "utf-8");
