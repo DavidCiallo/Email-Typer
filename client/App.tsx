@@ -5,6 +5,7 @@ import StrategyPage from './pages/strategy/StrategyPage';
 import InboxPage from './pages/inbox/InboxPage';
 import AuthPage from './pages/auth/AuthPage';
 import SenderPage from './pages/send/SendPage';
+import { autoRecordLive } from './methods/status';
 
 const PrivateRoute = ({ redirectPath = '/auth' }) => {
   // 检查 localStorage 中的 token
@@ -14,6 +15,7 @@ const PrivateRoute = ({ redirectPath = '/auth' }) => {
 };
 
 const App = () => {
+  autoRecordLive();
   return (
     <Router>
       <Routes>
