@@ -24,7 +24,6 @@ export async function initialize() {
         }
     }
 
-    // Start email file watcher if MAILDIR_PATH is configured
     const maildirPath = process.env.MAILDIR_PATH;
     if (maildirPath) {
         startEmailWatcher(maildirPath);

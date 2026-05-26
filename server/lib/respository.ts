@@ -15,8 +15,8 @@ class Repository<T> {
     /**
      * @param entityClass The class of the entity this repository will manage.
      */
-    private constructor(private entityClass: Constructor<T>) {
-        this.name = entityClass.name.toLowerCase().replace("entity", "");
+    private constructor(_entityClass: Constructor<T>) {
+        this.name = _entityClass.name.toLowerCase().replace("entity", "");
         this.filePath = path.join('./data', `${this.name}.json`);
     }
 

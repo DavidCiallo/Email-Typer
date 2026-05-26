@@ -26,7 +26,7 @@ export async function mounthttp(req: Request, mounts: RouteMount[]): Promise<Res
             let requestBody: Record<string, any> | null = {};
             try {
                 const contentType = req.headers.get("content-type") || "";
-                const rawHeaders = Object.fromEntries(req.headers.entries());
+                const rawHeaders = Object.fromEntries((req.headers as any).entries());
                 const rawBody = await req.text();
                 if (contentType.includes("application/json")) {
                     requestBody = JSON.parse(rawBody);
@@ -159,8 +159,8 @@ export const wshandler = {
     open(ws: any) {
         activeSockets.add(ws);
     },
-    message(ws: any, message: any) { },
-    close(ws: any, code: number, message: string) {
+    message(_ws: any, _message: any) { },
+    close(ws: any, _code: number, _message: string) {
         activeSockets.delete(ws);
     },
 };
