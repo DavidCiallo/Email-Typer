@@ -7,13 +7,7 @@ const cache = new Map<string, string>();
 
 const SETTING_KEYS: Record<string, string> = {
     "resend_api_key": "RESEND_API_KEY",
-    "email_from": "EMAIL_FROM",
-    "allowed_register_domains": "ALLOWED_REGISTER_DOMAINS",
-    "client_url": "CLIENT_URL",
-    "smtp_host": "SMTP_HOST",
-    "smtp_port": "SMTP_PORT",
-    "smtp_user": "SMTP_USER",
-    "smtp_pass": "SMTP_PASS",
+    "allowed_domains": "ALLOWED_DOMAINS",
 };
 
 export class SettingsService {
