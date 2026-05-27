@@ -9,7 +9,9 @@ import { requireAdmin } from "../auth/auth.service";
 async function list(request: SettingsListRequest) {
     request = SettingsListRequest.self(request);
     await requireAdmin(request.auth);
-    return SettingsService.getAll();
+    const settings = SettingsService.getAll();
+    const entries = Object.entries(settings).map(([key, value]) => ({ key, value }));
+    return { entries };
 }
 
 async function save(request: SettingsSaveRequest) {

@@ -8,6 +8,7 @@ import {
     EmailRestoreRequest,
 } from "../../../shared/modules/email/email.interface";
 import { emailRoutes } from "../../../shared/modules/email/email.router";
+import { SettingsService } from "../settings/settings.service";
 import { EmailService, sendEmail } from "./email.service";
 import { getIdentifyByVerify } from "../auth/auth.service";
 
@@ -52,6 +53,17 @@ async function send(request: EmailSendRequest) {
     if (!email) throw "Unauthorized";
 
     const { from, to, subject, html } = request.email;
+
+    // Validate from domain against allowed domains
+    const allowedDomains = SettingsService.get("allowed_domains");
+    if (allowedDomains) {
+        const domains = allowedDomains.split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+        const fromDomain = from.split("@")[1]?.toLowerCase();
+        if (!fromDomain || !domains.includes(fromDomain)) {
+            throw `发件域名不允许，仅支持: ${allowedDomains}`;
+        }
+    }
+
     const result = await sendEmail({ from, to, subject, html });
     if (!result) throw "Failed to send email";
     return {};

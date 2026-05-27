@@ -19,7 +19,7 @@ export async function loginUser(email: string, password: string): Promise<{ toke
 }
 
 function checkAllowedDomain(email: string): string | null {
-    const allowedDomains = SettingsService.get("allowed_register_domains");
+    const allowedDomains = SettingsService.get("allowed_domains");
     if (!allowedDomains) return null;
     const domain = email.split("@")[1]?.toLowerCase();
     if (!domain) return "Invalid email format";
