@@ -10,8 +10,6 @@ import fs from "fs";
 const emailRepository: Repository<EmailEntity> = Repository.instance("Email");
 const RESEND_API_URL = "https://api.resend.com/emails";
 
-// ========== Resend API (sending) ==========
-
 interface SendEmailParams {
     from: string;
     to: string;
