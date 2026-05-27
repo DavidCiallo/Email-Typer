@@ -30,14 +30,6 @@ const SenderPage = () => {
                 <Card className="mb-2">
                     <CardBody className="flex flex-col md:flex-row">
                         <Input
-                            label="发件人"
-                            placeholder="请输入邮箱"
-                            className="md:w-2/5 md:mr-6 my-1"
-                            variant="underlined"
-                            value={from}
-                            onValueChange={setFrom}
-                        />
-                        <Input
                             label="收件人"
                             placeholder="请输入邮箱"
                             className="md:w-2/5 md:mr-6 my-1"
@@ -68,6 +60,13 @@ const SenderPage = () => {
                     </CardBody>
                 </Card>
                 <div className="mx-auto w-3/4 md:mx-0 md:w-100 mt-5 flex flex-col md:flex-row justify-end items-center">
+                    <Input
+                        placeholder="发件邮箱 (仅支持 @noworrytourism.cn)"
+                        className="w-full md:w-80 md:mr-4 my-2"
+                        variant="underlined"
+                        value={from}
+                        onValueChange={setFrom}
+                    />
                     <Button
                         color={justSend ? "default" : "primary"}
                         className="my-2" onClick={sendEmail}

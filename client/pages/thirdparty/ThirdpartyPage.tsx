@@ -116,7 +116,7 @@ const ThirdpartyPage = () => {
                                                 className="cursor-pointer"
                                                 onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
                                             >
-                                                ******
+                                                ●●●●●●●●
                                             </span>
                                         </Tooltip>
                                         <span
@@ -160,7 +160,7 @@ const ThirdpartyPage = () => {
                                     <Chip color="primary" variant="bordered" className="text-primary shrink-0">
                                         <div className="w-8 text-center">密码</div>
                                     </Chip>
-                                    <span className="text-sm ml-1">******</span>
+                                    <span className="text-sm ml-1">●●●●●●●●</span>
                                     <span
                                         className="text-primary cursor-pointer ml-2 text-xs shrink-0"
                                         onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
