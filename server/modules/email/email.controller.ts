@@ -51,8 +51,8 @@ async function send(request: EmailSendRequest) {
     const email = getIdentifyByVerify(request.auth || "");
     if (!email) throw "Unauthorized";
 
-    const { to, subject, html } = request.email;
-    const result = await sendEmail({ to, subject, html });
+    const { from, to, subject, html } = request.email;
+    const result = await sendEmail({ from, to, subject, html });
     if (!result) throw "Failed to send email";
     return {};
 }

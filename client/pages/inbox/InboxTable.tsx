@@ -59,18 +59,21 @@ const InboxTable = (params: {
             >
                 {emailList.map((email, index) => (
                     <TableRow key={index}>
-                        <TableCell className="min-w-40 max-w-40">
-                            <div>
-                                <div className="mr-1">
-                                    <span className="whitespace-nowrap">{formatEmail(email.from).name}</span>
-                                </div>
-                                <div className="text-xs text-gray-400">
-                                    <span className="whitespace-nowrap">{formatEmail(email.from).email}</span>
-                                </div>
+                        <TableCell className="min-w-40 max-w-44">
+                            <div className="overflow-hidden">
+                                <div className="truncate">{formatEmail(email.from).name}</div>
+                                {formatEmail(email.from).email && (
+                                    <div className="text-xs text-gray-400 truncate">{formatEmail(email.from).email}</div>
+                                )}
                             </div>
                         </TableCell>
-                        <TableCell className="w-50">
-                            <div>{email.to}</div>
+                        <TableCell className="min-w-40 max-w-44">
+                            <div className="overflow-hidden">
+                                <div className="truncate">{formatEmail(email.to).name}</div>
+                                {formatEmail(email.to).email && (
+                                    <div className="text-xs text-gray-400 truncate">{formatEmail(email.to).email}</div>
+                                )}
+                            </div>
                         </TableCell>
                         <TableCell className="w-80">
                             <div>{email.subject}</div>
@@ -78,7 +81,7 @@ const InboxTable = (params: {
                         <TableCell className="w-30">
                             <div>{formatTime(Number(email.time))}</div>
                         </TableCell>
-                        <TableCell className="w-40">
+                        <TableCell className="w-28">
                             <div className="flex flex-row gap-2 justify-center">
                                 <Button
                                     size="sm" color="primary"

@@ -2,6 +2,8 @@ import { HttpClientService } from "../lib/webhttp";
 import { authRoutes } from "../../shared/modules/auth/auth.router";
 import { emailRoutes } from "../../shared/modules/email/email.router";
 import { strategyRoutes } from "../../shared/modules/strategy/strategy.router";
+import { safetyRoutes } from "../../shared/modules/safety/safety.router";
+import { thirdpartyRoutes } from "../../shared/modules/thirdparty/thirdparty.router";
 
 type RouteDef = { path: string; request: any; response: any };
 
@@ -33,3 +35,5 @@ const http = HttpClientService.getInstance();
 export const AuthRouter = buildApiClient(authRoutes as any, http);
 export const EmailRouter = buildApiClient(emailRoutes as any, http);
 export const StrategyRouter = buildApiClient(strategyRoutes as any, http);
+export const SafetyRouter = buildApiClient(safetyRoutes as any, http);
+export const ThirdpartyRouter = buildApiClient(thirdpartyRoutes as any, http);

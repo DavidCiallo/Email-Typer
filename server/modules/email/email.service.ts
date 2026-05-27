@@ -1,6 +1,7 @@
 import Repository from "../../lib/repository";
 import { EmailEntity } from "../../../shared/modules/email/email.entity";
 import { SettingsService } from "../settings/settings.service";
+import { SafetyService } from "../safety/safety.service";
 import { nanoid } from "nanoid";
 import chokidar from "chokidar";
 import path from "path";
@@ -12,19 +13,18 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 // ========== Resend API (sending) ==========
 
 interface SendEmailParams {
+    from: string;
     to: string;
     subject: string;
     html: string;
 }
 
-export async function sendEmail({ to, subject, html }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ from, to, subject, html }: SendEmailParams): Promise<boolean> {
     const api_key = SettingsService.get("resend_api_key");
     if (!api_key) {
         console.error("RESEND_API_KEY is not configured");
         return false;
     }
-
-    const from = SettingsService.get("email_from") || "noreply@cfrs.dev";
 
     try {
         const response = await fetch(RESEND_API_URL, {
@@ -107,6 +107,18 @@ export class EmailService {
         const parsed = EmailService.parseRawEmail(raw);
         if (!parsed) return null;
 
+        // Safety check: block blacklisted senders and sensitive words
+        const blocked = await SafetyService.isBlocked(
+            parsed.from || "",
+            parsed.subject || "",
+            parsed.html || "",
+            parsed.text || "",
+        );
+        if (blocked) {
+            console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}"`);
+            return null;
+        }
+
         const email: Partial<EmailEntity> = {
             eid: nanoid(12),
             from: parsed.from || "",
@@ -187,6 +199,18 @@ export class EmailService {
                     continue;
                 }
 
+                // Safety check: block blacklisted senders and sensitive words
+                const blocked = await SafetyService.isBlocked(
+                    parsed.from || "",
+                    parsed.subject || "",
+                    parsed.html || "",
+                    parsed.text || "",
+                );
+                if (blocked) {
+                    console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}"`);
+                    continue;
+                }
+
                 const email: Partial<EmailEntity> = {
                     eid: nanoid(12),
                     from: parsed.from || "",
@@ -252,13 +276,35 @@ export class EmailService {
     /**
      * Decode RFC 2047 MIME encoded-words like =?UTF-8?B?base64?= or =?UTF-8?Q?quoted-printable?=
      */
+    /**
+     * Map common charsets to TextDecoder-compatible labels.
+     */
+    private static resolveCharset(charset: string): string {
+        const m: Record<string, string> = {
+            "gb2312": "gbk",
+            "gbk": "gbk",
+            "gb18030": "gb18030",
+            "big5": "big5",
+            "shift_jis": "shift-jis",
+            "euc-jp": "euc-jp",
+            "euc-kr": "euc-kr",
+            "windows-1252": "windows-1252",
+            "windows-874": "windows-874",
+            "iso-8859-1": "iso-8859-1",
+            "iso-8859-2": "iso-8859-2",
+            "iso-8859-6": "iso-8859-6",
+        };
+        const key = charset.toLowerCase();
+        return m[key] || "utf-8";
+    }
+
     private static decodeMimeHeader(value: string): string {
-        return value.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_match, _charset: string, encoding: string, data: string) => {
+        return value.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_match, charset: string, encoding: string, data: string) => {
             try {
+                const decoder = EmailService.resolveCharset(charset);
                 if (encoding.toUpperCase() === "B") {
-                    return Buffer.from(data, "base64").toString("utf-8");
+                    return new TextDecoder(decoder).decode(Buffer.from(data, "base64"));
                 } else if (encoding.toUpperCase() === "Q") {
-                    // Decode via bytes to handle multi-byte UTF-8 sequences properly
                     const bytes: number[] = [];
                     const src = data.replace(/_/g, " ");
                     let i = 0;
@@ -271,7 +317,7 @@ export class EmailService {
                             i++;
                         }
                     }
-                    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+                    return new TextDecoder(decoder).decode(new Uint8Array(bytes));
                 }
             } catch { /* use raw if decode fails */ }
             return data;
@@ -281,11 +327,12 @@ export class EmailService {
     /**
      * Decode a body part according to Content-Transfer-Encoding.
      */
-    private static decodeBody(body: string, encoding: string): string {
+    private static decodeBody(body: string, encoding: string, charset?: string): string {
+        const dec = EmailService.resolveCharset(charset || "utf-8");
         const enc = encoding.toLowerCase();
         if (enc === "base64") {
             try {
-                return Buffer.from(body.replace(/[\s\n\r]/g, ""), "base64").toString("utf-8");
+                return new TextDecoder(dec).decode(Buffer.from(body.replace(/[\s\n\r]/g, ""), "base64"));
             } catch { /* fall through */ }
         } else if (enc === "quoted-printable") {
             // Decode via bytes to properly handle multi-byte UTF-8 sequences like =E9=AA=8C
@@ -301,7 +348,7 @@ export class EmailService {
                     i++;
                 }
             }
-            return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+            return new TextDecoder(dec).decode(new Uint8Array(bytes));
         }
         return body;
     }
@@ -367,14 +414,16 @@ export class EmailService {
                             }
                         }
                     }
+                    const partContentType = partHeaders["content-type"] || "";
                     const partEncoding = partHeaders["content-transfer-encoding"] || "";
+                    const partCharset = (partContentType.match(/charset="?([^";\s]+)"?/i) || [])[1] || "";
 
-                    if (partHeaders["content-type"]?.includes("text/plain")) {
+                    if (partContentType.includes("text/plain")) {
                         const partBody = part.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
-                        text = EmailService.decodeBody(partBody, partEncoding);
-                    } else if (partHeaders["content-type"]?.includes("text/html")) {
+                        text = EmailService.decodeBody(partBody, partEncoding, partCharset);
+                    } else if (partContentType.includes("text/html")) {
                         const partBody = part.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
-                        html = EmailService.decodeBody(partBody, partEncoding);
+                        html = EmailService.decodeBody(partBody, partEncoding, partCharset);
                     }
                 }
 
@@ -382,7 +431,8 @@ export class EmailService {
             } else {
                 // Single part
                 const encoding = headers["content-transfer-encoding"] || "";
-                const body = EmailService.decodeBody(bodySection, encoding);
+                const charset = (contentType.match(/charset="?([^";\s]+)"?/i) || [])[1] || "";
+                const body = EmailService.decodeBody(bodySection, encoding, charset);
 
                 if (contentType.includes("text/html")) {
                     return { from, to, subject, html: body, text: body.replace(/<[^>]+>/g, ""), time, account_id };

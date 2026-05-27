@@ -62,15 +62,17 @@ export class EmailDetailResponse implements BaseResponse<EmailEntity> {
 
 // Send email
 export class EmailSendBody {
+    public from: string;
     public to: string;
     public subject: string;
     public html: string;
     public text?: string;
 
     constructor(origin: any) {
-        if (!origin.to || !origin.subject || !origin.html) {
-            throw new Error("To, subject and html are required");
+        if (!origin.from || !origin.to || !origin.subject || !origin.html) {
+            throw new Error("From, to, subject and html are required");
         }
+        this.from = origin.from;
         this.to = origin.to;
         this.subject = origin.subject;
         this.html = origin.html;

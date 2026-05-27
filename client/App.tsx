@@ -5,6 +5,8 @@ import StrategyPage from './pages/strategy/StrategyPage';
 import InboxPage from './pages/inbox/InboxPage';
 import AuthPage from './pages/auth/AuthPage';
 import SenderPage from './pages/send/SendPage';
+import SafetyPage from './pages/safety/SafetyPage';
+import ThirdpartyPage from './pages/thirdparty/ThirdpartyPage';
 import { autoRecordLive } from './methods/status';
 
 const PrivateRoute = ({ redirectPath = '/auth' }) => {
@@ -25,6 +27,8 @@ const App = () => {
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/strategy" element={<StrategyPage />} />
           <Route path="/send" element={<SenderPage />} />
+          <Route path="/safety" element={<SafetyPage />} />
+          <Route path="/thirdparty" element={<ThirdpartyPage />} />
         </Route>
         <Route path="/" element={<Navigate to="/inbox" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
