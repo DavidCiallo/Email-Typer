@@ -4,6 +4,8 @@ import { emailRoutes } from "../../shared/modules/email/email.router";
 import { strategyRoutes } from "../../shared/modules/strategy/strategy.router";
 import { safetyRoutes } from "../../shared/modules/safety/safety.router";
 import { thirdpartyRoutes } from "../../shared/modules/thirdparty/thirdparty.router";
+import { settingsRoutes } from "../../shared/modules/settings/settings.router";
+import { accountRoutes } from "../../shared/modules/account/account.router";
 
 type RouteDef = { path: string; request: any; response: any };
 
@@ -37,3 +39,5 @@ export const EmailRouter = buildApiClient(emailRoutes as any, http);
 export const StrategyRouter = buildApiClient(strategyRoutes as any, http);
 export const SafetyRouter = buildApiClient(safetyRoutes as any, http);
 export const ThirdpartyRouter = buildApiClient(thirdpartyRoutes as any, http);
+export const SettingsRouter = buildApiClient(settingsRoutes as any, http);
+export const AccountRouter = buildApiClient(accountRoutes as any, http);

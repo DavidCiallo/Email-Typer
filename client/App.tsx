@@ -7,6 +7,7 @@ import AuthPage from './pages/auth/AuthPage';
 import SenderPage from './pages/send/SendPage';
 import SafetyPage from './pages/safety/SafetyPage';
 import ThirdpartyPage from './pages/thirdparty/ThirdpartyPage';
+import SettingsPage from './pages/settings/SettingsPage';
 import { autoRecordLive } from './methods/status';
 
 const PrivateRoute = ({ redirectPath = '/auth' }) => {
@@ -29,6 +30,7 @@ const App = () => {
           <Route path="/send" element={<SenderPage />} />
           <Route path="/safety" element={<SafetyPage />} />
           <Route path="/thirdparty" element={<ThirdpartyPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="/" element={<Navigate to="/inbox" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
