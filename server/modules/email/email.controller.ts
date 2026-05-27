@@ -5,6 +5,7 @@ import {
     EmailReceiveRequest,
     EmailScanRequest,
     EmailDeleteRequest,
+    EmailRestoreRequest,
 } from "../../../shared/modules/email/email.interface";
 import { emailRoutes } from "../../../shared/modules/email/email.router";
 import { EmailService, sendEmail } from "./email.service";
@@ -27,6 +28,7 @@ async function list(request: EmailListRequest) {
         from: e.from,
         to: e.to,
         subject: e.subject,
+        html: e.html,
         text: e.text,
         time: e.time,
         account_id: e.account_id,
@@ -49,8 +51,8 @@ async function send(request: EmailSendRequest) {
     const email = getIdentifyByVerify(request.auth || "");
     if (!email) throw "Unauthorized";
 
-    const { to, subject, html } = request.email;
-    const result = await sendEmail({ to, subject, html });
+    const { from, to, subject, html } = request.email;
+    const result = await sendEmail({ from, to, subject, html });
     if (!result) throw "Failed to send email";
     return {};
 }
@@ -89,7 +91,16 @@ async function deleteEmail(request: EmailDeleteRequest) {
     return {};
 }
 
+async function restore(request: EmailRestoreRequest) {
+    request = EmailRestoreRequest.self(request);
+    const email = getIdentifyByVerify(request.auth || "");
+    if (!email) throw "Unauthorized";
+    const result = await EmailService.restore(request.id);
+    if (!result) throw "Email not found";
+    return {};
+}
+
 export const emailMount = {
     routes: emailRoutes,
-    handlers: { list, detail, send, receive, scan, delete: deleteEmail },
+    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore },
 };

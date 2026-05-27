@@ -14,6 +14,8 @@ import { emailMount } from "../modules/email/email.controller";
 import { strategyMount } from "../modules/strategy/strategy.controller";
 import { accountMount } from "../modules/account/account.controller";
 import { settingsMount } from "../modules/settings/settings.controller";
+import { safetyMount } from "../modules/safety/safety.controller";
+import { thirdpartyMount } from "../modules/thirdparty/thirdparty.controller";
 
 const PORT = parseInt(process.env.SERVER_PORT || "3300");
 
@@ -33,6 +35,8 @@ Bun.serve({
             strategyMount,
             accountMount,
             settingsMount,
+            safetyMount,
+            thirdpartyMount,
         ]);
         if (apiResponse) return apiResponse;
 

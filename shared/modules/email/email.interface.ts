@@ -62,15 +62,17 @@ export class EmailDetailResponse implements BaseResponse<EmailEntity> {
 
 // Send email
 export class EmailSendBody {
+    public from: string;
     public to: string;
     public subject: string;
     public html: string;
     public text?: string;
 
     constructor(origin: any) {
-        if (!origin.to || !origin.subject || !origin.html) {
-            throw new Error("To, subject and html are required");
+        if (!origin.from || !origin.to || !origin.subject || !origin.html) {
+            throw new Error("From, to, subject and html are required");
         }
+        this.from = origin.from;
         this.to = origin.to;
         this.subject = origin.subject;
         this.html = origin.html;
@@ -179,6 +181,31 @@ export class EmailDeleteResponse implements BaseResponse<null> {
     public message: string;
 
     constructor(origin: EmailDeleteResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+    }
+}
+
+// Restore email
+export class EmailRestoreRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+
+    constructor(origin: Partial<EmailRestoreRequest>) {
+        if (!origin.id) throw new Error("Email id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+    }
+    static self(unsafe: EmailRestoreRequest) {
+        return new EmailRestoreRequest(unsafe);
+    }
+}
+
+export class EmailRestoreResponse implements BaseResponse<null> {
+    public success: boolean;
+    public message: string;
+
+    constructor(origin: EmailRestoreResponse) {
         this.success = origin.success;
         this.message = origin.message;
     }

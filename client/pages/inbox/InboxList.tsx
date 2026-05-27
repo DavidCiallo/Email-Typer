@@ -37,9 +37,14 @@ const InboxList = (params: {
                                     <div className="w-8 text-center">收件</div>
                                 </Chip>
                                 <div className="text-sm ml-1">
-                                    <span className="whitespace-nowrap">
-                                        {formatEmail(email.to).email}
+                                    <span className="mr-1 whitespace-nowrap">
+                                        {formatEmail(email.to).name}
                                     </span>
+                                    {formatEmail(email.to).email && (
+                                        <span className="text-gray-500 whitespace-nowrap">
+                                            ({formatEmail(email.to).email})
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-row justify-between items-center mt-1 md:ml-5">

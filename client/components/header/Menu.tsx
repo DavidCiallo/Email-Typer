@@ -17,6 +17,8 @@ export const MenuComp = ({ now }: { now?: string }) => {
         { name: "邮件列表", link: "/inbox" },
         { name: "邮箱策略", link: "/strategy" },
         { name: "发送邮件", link: "/send" },
+        { name: "安全设置", link: "/safety" },
+        { name: "三方邮箱", link: "/thirdparty" },
     ];
 
     function handleLogout() {

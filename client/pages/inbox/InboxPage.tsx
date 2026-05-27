@@ -84,13 +84,7 @@ const EmailPage = () => {
                         setEmailContentOpen={setEmailContentOpen}
                         setFocusEmail={setFocusEmail}
                         onArchive={(id) => {
-                            EmailRouter.delete({ id }, (res: any) => {
-                                if (res.success) {
-                                    queryEmails();
-                                } else {
-                                    toast({ title: res.message || "归档失败", color: "danger" });
-                                }
-                            });
+                            EmailRouter.delete({ id }, () => queryEmails());
                         }}
                     />
                 </div>
