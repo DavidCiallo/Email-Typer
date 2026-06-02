@@ -1,6 +1,7 @@
 import './App.css';
 
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import StrategyPage from './pages/strategy/StrategyPage';
 import InboxPage from './pages/inbox/InboxPage';
 import AuthPage from './pages/auth/AuthPage';
@@ -9,12 +10,28 @@ import SafetyPage from './pages/safety/SafetyPage';
 import ThirdpartyPage from './pages/thirdparty/ThirdpartyPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import { autoRecordLive } from './methods/status';
+import { AuthRouter } from './api/instance';
 
 const PrivateRoute = ({ redirectPath = '/auth' }) => {
-  // 检查 localStorage 中的 token
-  const isAuthenticated = !!localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  const [ok, setOk] = useState(!!token);
 
-  return isAuthenticated ? <Outlet /> : <Navigate to={redirectPath} replace />;
+  useEffect(() => {
+    if (!token) return;
+    AuthRouter.alive({});
+    window.addEventListener('alive', (e: any) => {
+      if (e.detail?.success) {
+        setOk(true);
+      } else {
+        localStorage.removeItem('token');
+        setOk(false);
+      }
+    }, { once: true });
+  }, [token]);
+
+  if (!token) return <Navigate to={redirectPath} replace />;
+  if (!ok) return null;
+  return <Outlet />;
 };
 
 const App = () => {
