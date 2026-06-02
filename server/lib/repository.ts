@@ -167,7 +167,7 @@ class Repository<
     ): Promise<T[]> {
         const results: T[] = [];
         const since = config?.since;
-        const limit = config?.limit;
+        const limit = config?.limit ?? 1000;
         const offset = config?.offset || 0;
 
         // Use reverse read to get newest-first (matches previous Drizzle DESC order)
@@ -178,14 +178,10 @@ class Repository<
             if (where && !matches(row, where as Record<string, any>)) continue;
 
             results.push(row as T);
-            // If limit is set, stop reading when we have enough to satisfy offset+limit
-            if (limit !== undefined && results.length >= offset + limit) break;
+            if (results.length >= offset + limit) break;
         }
 
-        if (offset > 0 || limit !== undefined) {
-            return results.slice(offset, limit !== undefined ? offset + limit : undefined);
-        }
-        return results;
+        return results.slice(offset, offset + limit);
     }
 
     /** Stream rows one at a time via callback — never accumulates, avoids OOM */

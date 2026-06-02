@@ -144,7 +144,16 @@ export class EmailService {
         return `${e.from || ""}|${e.to || ""}|${e.subject || ""}|${e.time || 0}`;
     }
 
-    /** Stream-collect dedup keys from all stored emails (incl. soft-deleted) — never holds full row objects */
+    /** Check if an email with matching fingerprint already exists (incl. soft-deleted). Streams — stops on first hit. */
+    private static async dedupExists(e: { from?: string; to?: string; subject?: string; time?: number }): Promise<boolean> {
+        const existing = await emailRepository.findFirst(
+            { from: e.from, to: e.to, subject: e.subject, time: e.time },
+            true,
+        );
+        return existing !== null;
+    }
+
+    /** Stream-collect dedup keys from all stored emails (incl. soft-deleted) — used only by scanDirectory batch import */
     private static async collectDedupKeys(): Promise<Set<string>> {
         const keys = new Set<string>();
         await emailRepository.findEach((e) => {
@@ -249,9 +258,8 @@ export class EmailService {
             if (!parsed) return null;
 
             // Dedup by content fingerprint (from+to+subject+time), even if soft-deleted
-            const dedupKey = EmailService.dedupKey(parsed);
-            const existingKeys = await EmailService.collectDedupKeys();
-            if (existingKeys.has(dedupKey)) return null;
+            const exists = await EmailService.dedupExists(parsed);
+            if (exists) return null;
 
             const email: Partial<EmailEntity> = {
                 eid: nanoid(12),

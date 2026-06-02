@@ -38,6 +38,7 @@ export class StrategyService {
         const { sendEmail } = await import("../email/email.service");
         const content = email.html || email.text || "";
         await sendEmail({
+            from: email.from,
             to: strategy.forward_to,
             subject: `Fwd: ${email.subject}`,
             html: content,
