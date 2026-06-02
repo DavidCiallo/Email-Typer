@@ -10,6 +10,7 @@ import { accountRoutes } from "../../../shared/modules/account/account.router";
 import { AccountService } from "./account.service";
 import { requireAdmin } from "../auth/auth.service";
 import Repository from "../../lib/repository";
+import { EmailEntity } from "../../../shared/modules/email/email.entity";
 
 async function list(request: AccountListRequest) {
     request = AccountListRequest.self(request);
@@ -47,16 +48,17 @@ async function exportData(request: AccountExportRequest) {
     await requireAdmin(request.auth);
 
     const accountRepo = Repository.instance("Account");
-    const emailRepo = Repository.instance("Email");
+    const emailRepo = Repository.instance<EmailEntity>("Email");
     const strategyRepo = Repository.instance("Strategy");
     const settingsRepo = Repository.instance("Settings");
 
-    const [accounts, emails, strategies, settings] = await Promise.all([
-        accountRepo.findAllIgnoreDelete(),
-        emailRepo.findAllIgnoreDelete(),
-        strategyRepo.findAllIgnoreDelete(),
-        settingsRepo.findAllIgnoreDelete(),
-    ]);
+    const accounts = await accountRepo.findAllIgnoreDelete();
+    const strategies = await strategyRepo.findAllIgnoreDelete();
+    const settings = await settingsRepo.findAllIgnoreDelete();
+    const emails: EmailEntity[] = [];
+    for await (const batch of emailRepo.findAllIgnoreDeleteBatch(2000)) {
+        for (const row of batch) emails.push(row);
+    }
 
     return {
         version: 1,
@@ -80,7 +82,7 @@ async function importData(request: AccountImportRequest) {
 
     for (const { repo, items, name } of tables) {
         if (!items || items.length === 0) continue;
-        await repo.hardDelete({});
+        await repo.truncate();
         for (let i = 0; i < items.length; i += 1000) {
             const chunk = items.slice(i, i + 1000);
             imported[name] = (imported[name] || 0) + await repo.batchInsert(chunk);

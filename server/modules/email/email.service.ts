@@ -73,11 +73,9 @@ export function buildVerificationEmail(verifyUrl: string): { subject: string; ht
 
 export class EmailService {
     static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number }): Promise<{ list: EmailEntity[]; total: number }> {
-        const all = await emailRepository.find(where);
-        all.sort((a, b) => (b.time ?? 0) - (a.time ?? 0));
-        const total = all.length;
         const { limit, offset = 0 } = config ?? {};
-        const list = limit !== undefined ? all.slice(offset, offset + limit) : all;
+        const total = await emailRepository.count(where);
+        const list = await emailRepository.find(where, { limit, offset });
         return { list, total };
     }
 
@@ -146,6 +144,15 @@ export class EmailService {
         return `${e.from || ""}|${e.to || ""}|${e.subject || ""}|${e.time || 0}`;
     }
 
+    /** Stream-collect dedup keys from all stored emails (incl. soft-deleted) — never holds full row objects */
+    private static async collectDedupKeys(): Promise<Set<string>> {
+        const keys = new Set<string>();
+        await emailRepository.findEach((e) => {
+            keys.add(EmailService.dedupKey(e));
+        }, { includeDeleted: true });
+        return keys;
+    }
+
     /**
      * Scan a directory recursively for Maildir files and import any that don't already exist.
      * Supports both standard Maildir structure (domain/new/filename) and plain .eml files.
@@ -162,42 +169,22 @@ export class EmailService {
             throw `Path is not a directory: ${dirPath}`;
         }
 
-        // Build set of known dedup keys (include soft-deleted)
-        const existingKeys = new Set<string>();
-        const allEmails = await emailRepository.findAllIgnoreDelete();
-        for (const e of allEmails) {
-            existingKeys.add(EmailService.dedupKey(e));
-        }
+        const existingKeys = await EmailService.collectDedupKeys();
 
-        // Recursively collect all regular files, skip dotfiles
-        const mailFiles: string[] = [];
-        function walk(dir: string) {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                if (entry.name.startsWith(".")) continue;
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    walk(full);
-                } else if (entry.isFile()) {
-                    mailFiles.push(full);
-                }
-            }
-        }
-        walk(dirPath);
-
+        let scanned = 0;
         let imported = 0;
 
-        for (const fullPath of mailFiles) {
+        for (const fullPath of EmailService.walkFiles(dirPath)) {
+            scanned++;
             try {
                 const content = fs.readFileSync(fullPath, "utf-8");
                 const parsed = EmailService.parseRawEmail(content);
                 if (!parsed) continue;
 
-                // Skip if a matching email already exists
                 if (existingKeys.has(EmailService.dedupKey(parsed))) {
                     continue;
                 }
 
-                // Safety check: block blacklisted senders and sensitive words
                 const blocked = await SafetyService.isBlocked(
                     parsed.from || "",
                     parsed.subject || "",
@@ -233,7 +220,20 @@ export class EmailService {
             }
         }
 
-        return { scanned: mailFiles.length, imported };
+        return { scanned, imported };
+    }
+
+    /** Recursively yield all regular files in a directory, skipping dotfiles */
+    private static *walkFiles(dir: string): Generator<string, void, void> {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name.startsWith(".")) continue;
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                yield* EmailService.walkFiles(full);
+            } else if (entry.isFile()) {
+                yield full;
+            }
+        }
     }
 
     /**
@@ -250,8 +250,8 @@ export class EmailService {
 
             // Dedup by content fingerprint (from+to+subject+time), even if soft-deleted
             const dedupKey = EmailService.dedupKey(parsed);
-            const allEmails = await emailRepository.findAllIgnoreDelete();
-            if (allEmails.some(e => EmailService.dedupKey(e) === dedupKey)) return null;
+            const existingKeys = await EmailService.collectDedupKeys();
+            if (existingKeys.has(dedupKey)) return null;
 
             const email: Partial<EmailEntity> = {
                 eid: nanoid(12),

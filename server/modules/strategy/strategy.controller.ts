@@ -17,8 +17,10 @@ async function list(request: StrategyListRequest) {
     if (!email) throw "Unauthorized";
 
     const strategies = await StrategyService.findList();
-    const accounts = await accountRepo.findAllIgnoreDelete();
-    const accountMap = new Map(accounts.map(a => [a.id, a]));
+    const accountMap = new Map<string, { name?: string; email?: string }>();
+    await accountRepo.findEach((a) => {
+        accountMap.set(a.id!, { name: a.name, email: a.email });
+    });
 
     const list = strategies.map(s => ({
         id: s.id,
