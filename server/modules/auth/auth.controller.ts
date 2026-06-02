@@ -39,11 +39,13 @@ async function config(_request: AuthConfigRequest) {
     const allowed_domains = domains ? domains.split(",").map(d => d.trim()).filter(Boolean) : [];
     const fromDomains = SettingsService.get("allowed_from_domains");
     const allowed_from_domains = fromDomains ? fromDomains.split(",").map(d => d.trim()).filter(Boolean) : [];
-    return { allowed_domains, allowed_from_domains };
+    const allow_register = SettingsService.get("allow_register") !== "0";
+    return { allowed_domains, allowed_from_domains, allow_register };
 }
 
 async function register(request: RegisterRequest) {
     request = RegisterRequest.self(request);
+    if (SettingsService.get("allow_register") === "0") throw "注册功能已关闭";
     const { identify } = request;
     if (!identify) throw "Register data is missing";
     const { name, email, password } = identify;

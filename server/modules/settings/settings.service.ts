@@ -6,6 +6,7 @@ const settingsRepo: Repository<SettingsEntity> = Repository.instance("Settings")
 const cache = new Map<string, string>();
 
 const SETTING_KEYS: Record<string, string> = {
+    "allow_register": "ALLOW_REGISTER",
     "resend_api_key": "RESEND_API_KEY",
     "resend_api_keys": "RESEND_API_KEYS",
     "allowed_domains": "ALLOWED_DOMAINS",

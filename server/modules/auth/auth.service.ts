@@ -7,9 +7,7 @@ import { SettingsService } from "../settings/settings.service";
 const accountRepository: Repository<AccountEntity> = Repository.instance("Account");
 
 export async function loginUser(email: string, password: string): Promise<{ token?: string; is_admin?: number; needsVerification?: boolean }> {
-    console.log(password)
     password = hashGenerate(password);
-    console.log(password)
     const emailItem = await accountRepository.findOne({ email, password });
     if (emailItem) {
         return { token: genTokenForIdentify(email), is_admin: emailItem.is_admin };
