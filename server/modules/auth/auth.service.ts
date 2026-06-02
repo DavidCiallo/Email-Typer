@@ -42,7 +42,10 @@ export async function preRegisterUser(name: string, email: string, password: str
     const payload = [name, email, password].join("|-|");
     const verificationToken = aesEncrypt(payload);
     const verifyUrl = `${SettingsService.get("client_url")}/verify?token=${encodeURIComponent(verificationToken)}`;
+    const fromDomain = (SettingsService.get("allowed_from_domains") || SettingsService.get("allowed_domains")).split(",")[0]?.trim();
+    const from = fromDomain ? `noreply@${fromDomain}` : "noreply@example.com";
     const emailSent = await sendEmail({
+        from,
         to: email,
         ...buildVerificationEmail(verifyUrl),
     });

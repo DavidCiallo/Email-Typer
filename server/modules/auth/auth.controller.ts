@@ -37,7 +37,9 @@ async function login(request: LoginRequest) {
 async function config(_request: AuthConfigRequest) {
     const domains = SettingsService.get("allowed_domains");
     const allowed_domains = domains ? domains.split(",").map(d => d.trim()).filter(Boolean) : [];
-    return { allowed_domains };
+    const fromDomains = SettingsService.get("allowed_from_domains");
+    const allowed_from_domains = fromDomains ? fromDomains.split(",").map(d => d.trim()).filter(Boolean) : [];
+    return { allowed_domains, allowed_from_domains };
 }
 
 async function register(request: RegisterRequest) {

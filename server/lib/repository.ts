@@ -298,48 +298,39 @@ class Repository<
 
     async update(where: Partial<T>, updateData: Partial<T>, includeDeleted = false): Promise<boolean> {
         return this.withLock(async () => {
-            const file = this.filePath();
-            if (!fs.existsSync(file)) return false;
-            const tmp = file + ".tmp";
             const now = Date.now();
             let updated = false;
-            const buf: string[] = [];
+            const file = this.filePath();
+            if (!fs.existsSync(file)) return false;
 
-            const flush = () => {
-                if (buf.length === 0) return;
-                fs.appendFileSync(tmp, buf.join("\n") + "\n");
-                buf.length = 0;
-            };
+            const content = fs.readFileSync(file, "utf-8");
+            const lines = content.split("\n");
+            const out: string[] = [];
 
-            try {
-                for await (const row of readLines(this.collection)) {
-                    if (!includeDeleted && row.delete_time) {
-                        buf.push(JSON.stringify(row));
-                        if (buf.length >= 1000) flush();
-                        continue;
-                    }
-
-                    let match = true;
-                    for (const [key, val] of Object.entries(where)) {
-                        if (row[key] !== val) { match = false; break; }
-                    }
-
-                    if (match) {
-                        Object.assign(row, updateData, { update_time: now });
-                        updated = true;
-                    }
-                    buf.push(JSON.stringify(row));
-                    if (buf.length >= 1000) flush();
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                const row = JSON.parse(trimmed);
+                if (!includeDeleted && row.delete_time) {
+                    out.push(line);
+                    continue;
                 }
-            } finally {
-                flush();
+
+                let match = true;
+                for (const [key, val] of Object.entries(where)) {
+                    if (row[key] !== val) { match = false; break; }
+                }
+
+                if (match) {
+                    Object.assign(row, updateData, { update_time: now });
+                    out.push(JSON.stringify(row));
+                    updated = true;
+                } else {
+                    out.push(line);
+                }
             }
 
-            if (updated) {
-                fs.renameSync(tmp, file);
-            } else {
-                try { fs.unlinkSync(tmp); } catch {}
-            }
+            fs.writeFileSync(file, out.join("\n") + "\n");
             return updated;
         });
     }
@@ -361,38 +352,31 @@ class Repository<
         return this.withLock(async () => {
             const file = this.filePath();
             if (!fs.existsSync(file)) return false;
-            const tmp = file + ".tmp";
+
             let deleted = false;
-            const buf: string[] = [];
 
-            const flush = () => {
-                if (buf.length === 0) return;
-                fs.appendFileSync(tmp, buf.join("\n") + "\n");
-                buf.length = 0;
-            };
+            const content = fs.readFileSync(file, "utf-8");
+            const lines = content.split("\n");
+            const out: string[] = [];
 
-            try {
-                for await (const row of readLines(this.collection)) {
-                    let match = true;
-                    for (const [key, val] of Object.entries(where)) {
-                        if (row[key] !== val) { match = false; break; }
-                    }
-                    if (match) {
-                        deleted = true;
-                    } else {
-                        buf.push(JSON.stringify(row));
-                        if (buf.length >= 1000) flush();
-                    }
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                const row = JSON.parse(trimmed);
+
+                let match = true;
+                for (const [key, val] of Object.entries(where)) {
+                    if (row[key] !== val) { match = false; break; }
                 }
-            } finally {
-                flush();
+
+                if (match) {
+                    deleted = true;
+                } else {
+                    out.push(line);
+                }
             }
 
-            if (deleted) {
-                fs.renameSync(tmp, file);
-            } else {
-                try { fs.unlinkSync(tmp); } catch {}
-            }
+            fs.writeFileSync(file, out.join("\n") + "\n");
             return deleted;
         });
     }
@@ -407,51 +391,40 @@ class Repository<
         includeDeleted = false,
     ): Promise<boolean> {
         return this.withLock(async () => {
-            const file = this.filePath();
-            if (!fs.existsSync(file)) return false;
-            const tmp = file + ".tmp";
             const now = Date.now();
             let updated = false;
-            const buf: string[] = [];
+            const file = this.filePath();
+            if (!fs.existsSync(file)) return false;
 
-            const flush = () => {
-                if (buf.length === 0) return;
-                fs.appendFileSync(tmp, buf.join("\n") + "\n");
-                buf.length = 0;
-            };
+            const content = fs.readFileSync(file, "utf-8");
+            const lines = content.split("\n");
+            const out: string[] = [];
 
-            try {
-                for await (const row of readLines(this.collection)) {
-                    if (!includeDeleted && row.delete_time) {
-                        buf.push(JSON.stringify(row));
-                        if (buf.length >= 1000) flush();
-                        continue;
-                    }
-
-                    let match = true;
-                    for (const [key, val] of Object.entries(where)) {
-                        if (row[key] !== val) { match = false; break; }
-                    }
-
-                    if (match) {
-                        const patchData = patch(row);
-                        if (patchData) {
-                            Object.assign(row, patchData, { update_time: now });
-                            updated = true;
-                        }
-                    }
-                    buf.push(JSON.stringify(row));
-                    if (buf.length >= 1000) flush();
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                const row = JSON.parse(trimmed);
+                if (!includeDeleted && row.delete_time) {
+                    out.push(line);
+                    continue;
                 }
-            } finally {
-                flush();
+
+                let match = true;
+                for (const [key, val] of Object.entries(where)) {
+                    if (row[key] !== val) { match = false; break; }
+                }
+
+                if (match) {
+                    const patchData = patch(row);
+                    if (patchData) {
+                        Object.assign(row, patchData, { update_time: now });
+                        updated = true;
+                    }
+                }
+                out.push(JSON.stringify(row));
             }
 
-            if (updated) {
-                fs.renameSync(tmp, file);
-            } else {
-                try { fs.unlinkSync(tmp); } catch {}
-            }
+            fs.writeFileSync(file, out.join("\n") + "\n");
             return updated;
         });
     }

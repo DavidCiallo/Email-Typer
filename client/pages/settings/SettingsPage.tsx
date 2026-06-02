@@ -6,8 +6,11 @@ import { Button, Card, CardBody, Input } from "@heroui/react";
 import { toast } from "../../methods/notify";
 
 const FIELD_LABELS: Record<string, string> = {
-    resend_api_key: "Resend API Key",
-    allowed_domains: "允许的域名",
+    resend_api_key: "Resend API Key（默认）",
+    resend_api_keys: "Resend API Keys（多域名，格式：domain1:key1,domain2:key2）",
+    allowed_domains: "允许注册的域名",
+    allowed_from_domains: "允许发件的域名",
+    client_url: "客户端地址",
 };
 
 export default function SettingsPage() {

@@ -27,6 +27,8 @@ export class HttpClientService {
             window.dispatchEvent(event);
         } catch (e) {
             console.error("HTTP GET error:", e);
+            const event = new CustomEvent(name, { detail: { success: false, message: "网络异常，请求失败" }, bubbles: true });
+            window.dispatchEvent(event);
         }
     }
 
@@ -45,6 +47,8 @@ export class HttpClientService {
             window.dispatchEvent(event);
         } catch (e) {
             console.error("HTTP POST error:", e);
+            const event = new CustomEvent(name, { detail: { success: false, message: "网络异常，请求失败" }, bubbles: true });
+            window.dispatchEvent(event);
         }
     }
 }

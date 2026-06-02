@@ -1,7 +1,7 @@
 import { Header } from "../../components/header/Header";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Card, CardBody, Input, Textarea } from "@heroui/react";
-import { EmailRouter } from "../../api/instance";
+import { EmailRouter, AuthRouter } from "../../api/instance";
 import { toast } from "../../methods/notify";
 
 const SenderPage = () => {
@@ -10,6 +10,19 @@ const SenderPage = () => {
     const [subject, setSubject] = useState("");
     const [html, setHtml] = useState("");
     const [justSend, setJustSend] = useState(false);
+    const [fromDomains, setFromDomains] = useState<string[]>([]);
+
+    useEffect(() => {
+        AuthRouter.config({}, (res: any) => {
+            if (res.success && res.data) {
+                setFromDomains(res.data.allowed_from_domains || []);
+            }
+        });
+    }, []);
+
+    const placeholder = fromDomains.length
+        ? `发件邮箱（仅支持 @${fromDomains.join(", @")}）`
+        : "发件邮箱";
 
     async function sendEmail() {
         if (from.length < 2 || !from.includes("@")) return toast({ title: "请填写正确的发件邮箱", color: "danger" });
@@ -20,7 +33,11 @@ const SenderPage = () => {
         setJustSend(true);
         setTimeout(() => setJustSend(false), 5000);
         EmailRouter.send({ email: { from, to, subject, html } }, (res: any) => {
-            if (res.success) toast({ title: "发送成功", color: "primary" });
+            if (res.success) {
+                toast({ title: "发送成功", color: "primary" });
+            } else {
+                toast({ title: res.message || "发送失败", color: "danger" });
+            }
         })
     }
     return (
@@ -61,7 +78,7 @@ const SenderPage = () => {
                 </Card>
                 <div className="mx-auto w-3/4 md:mx-0 md:w-100 mt-5 flex flex-col md:flex-row justify-end items-center">
                     <Input
-                        placeholder="发件邮箱 (仅支持 @noworrytourism.cn)"
+                        placeholder={placeholder}
                         className="w-full md:w-80 md:mr-4 my-2"
                         variant="underlined"
                         value={from}

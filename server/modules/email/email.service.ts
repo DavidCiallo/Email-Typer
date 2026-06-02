@@ -18,9 +18,21 @@ interface SendEmailParams {
 }
 
 export async function sendEmail({ from, to, subject, html }: SendEmailParams): Promise<boolean> {
-    const api_key = SettingsService.get("resend_api_key");
+    // Match API key by from domain: "resend_api_keys" stores "domain1:key1,domain2:key2"
+    let api_key = SettingsService.get("resend_api_key");
+    const keyMap = SettingsService.get("resend_api_keys");
+    if (keyMap) {
+        const fromDomain = from.split("@")[1]?.toLowerCase();
+        for (const pair of keyMap.split(",")) {
+            const [domain, key] = pair.split(":").map(s => s.trim());
+            if (domain && key && domain.toLowerCase() === fromDomain) {
+                api_key = key;
+                break;
+            }
+        }
+    }
     if (!api_key) {
-        console.error("RESEND_API_KEY is not configured");
+        console.error("RESEND_API_KEY is not configured for domain in:", from);
         return false;
     }
 
