@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Input, Link, Form, addToast } from "@heroui/react";
 import { AuthRouter } from "../../api/instance";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -10,6 +10,15 @@ export default function Component() {
     const [searchParams] = useSearchParams();
     const token = searchParams.get("token");
     const [isRegister, setIsRegister] = useState(false);
+    const [allowRegister, setAllowRegister] = useState(false);
+
+    useEffect(() => {
+        AuthRouter.config({}, (res: any) => {
+            if (res.success && res.data) {
+                setAllowRegister(res.data.allow_register === true);
+            }
+        });
+    }, []);
 
     // Handle verification token from email link
     if (token) {
@@ -98,12 +107,14 @@ export default function Component() {
                                 登录
                             </Button>
                         </Form>
-                        <p className="text-center text-sm text-gray-500">
-                            还没有账号？{" "}
-                            <Link className="cursor-pointer text-sm" size="sm" onClick={() => setIsRegister(true)}>
-                                立即注册
-                            </Link>
-                        </p>
+                        {allowRegister && (
+                            <p className="text-center text-sm text-gray-500">
+                                还没有账号？{" "}
+                                <Link className="cursor-pointer text-sm" size="sm" onClick={() => setIsRegister(true)}>
+                                    立即注册
+                                </Link>
+                            </p>
+                        )}
                     </>
                 ) : (
                     <>

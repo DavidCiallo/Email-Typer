@@ -29,34 +29,34 @@ export class SafetyService {
     /**
      * Check whether an incoming email should be blocked.
      * Priority: whitelist > blacklist > sensitive_word
+     * Streams rules one at a time — no accumulation in memory.
      */
     static async isBlocked(from: string, subject: string, html?: string, text?: string): Promise<boolean> {
-        const all = await safetyRepository.find({});
         const body = (html || "") + (text || "");
 
-        const whitelist = all.filter(e => e.type === "whitelist");
-        const blacklist = all.filter(e => e.type === "blacklist");
-        const sensitiveWords = all.filter(e => e.type === "sensitive_word");
+        let whitelisted = false;
+        let blacklisted = false;
+        let sensitive = false;
 
-        // Whitelist check — if sender matches any whitelist, allow through
-        for (const w of whitelist) {
-            if (matchPattern(from, w.value)) return false;
-        }
-
-        // Blacklist check — if sender matches any blacklist, block
-        for (const b of blacklist) {
-            if (matchPattern(from, b.value)) return true;
-        }
-
-        // Sensitive word check — if subject or body contains any word, block
-        for (const sw of sensitiveWords) {
-            const keyword = sw.value.toLowerCase();
-            if (subject.toLowerCase().includes(keyword) || body.toLowerCase().includes(keyword)) {
-                return true;
+        await safetyRepository.findEach((e) => {
+            if (e.type === "whitelist" && matchPattern(from, e.value)) {
+                whitelisted = true;
             }
-        }
+            if (!blacklisted && e.type === "blacklist" && matchPattern(from, e.value)) {
+                blacklisted = true;
+            }
+            if (!sensitive && e.type === "sensitive_word") {
+                const keyword = e.value.toLowerCase();
+                if (subject.toLowerCase().includes(keyword) || body.toLowerCase().includes(keyword)) {
+                    sensitive = true;
+                }
+            }
+        });
 
-        return false;
+        // Whitelist takes priority over everything
+        if (whitelisted) return false;
+        // Blacklist and sensitive words both cause blocking
+        return blacklisted || sensitive;
     }
 }
 

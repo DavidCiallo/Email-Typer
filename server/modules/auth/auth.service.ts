@@ -7,9 +7,7 @@ import { SettingsService } from "../settings/settings.service";
 const accountRepository: Repository<AccountEntity> = Repository.instance("Account");
 
 export async function loginUser(email: string, password: string): Promise<{ token?: string; is_admin?: number; needsVerification?: boolean }> {
-    console.log(password)
     password = hashGenerate(password);
-    console.log(password)
     const emailItem = await accountRepository.findOne({ email, password });
     if (emailItem) {
         return { token: genTokenForIdentify(email), is_admin: emailItem.is_admin };
@@ -42,7 +40,10 @@ export async function preRegisterUser(name: string, email: string, password: str
     const payload = [name, email, password].join("|-|");
     const verificationToken = aesEncrypt(payload);
     const verifyUrl = `${SettingsService.get("client_url")}/verify?token=${encodeURIComponent(verificationToken)}`;
+    const fromDomain = (SettingsService.get("allowed_from_domains") || SettingsService.get("allowed_domains")).split(",")[0]?.trim();
+    const from = fromDomain ? `noreply@${fromDomain}` : "noreply@example.com";
     const emailSent = await sendEmail({
+        from,
         to: email,
         ...buildVerificationEmail(verifyUrl),
     });

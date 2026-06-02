@@ -12,7 +12,6 @@ export async function initialize() {
     // Create default admin account from env
     if (process.env.ADMIN_NAME && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
         const exist = await AccountService.findByEmail(process.env.ADMIN_EMAIL);
-        console.log(process.env.ADMIN_PASSWORD, hashGenerate(process.env.ADMIN_PASSWORD));
         if (!exist || exist.delete_time) {
             await AccountService.create({
                 name: process.env.ADMIN_NAME,

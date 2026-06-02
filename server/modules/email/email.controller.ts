@@ -54,13 +54,13 @@ async function send(request: EmailSendRequest) {
 
     const { from, to, subject, html } = request.email;
 
-    // Validate from domain against allowed domains
-    const allowedDomains = SettingsService.get("allowed_domains");
-    if (allowedDomains) {
-        const domains = allowedDomains.split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+    // Validate from domain against allowed_from_domains
+    const allowedFrom = SettingsService.get("allowed_from_domains");
+    if (allowedFrom) {
+        const domains = allowedFrom.split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
         const fromDomain = from.split("@")[1]?.toLowerCase();
         if (!fromDomain || !domains.includes(fromDomain)) {
-            throw `发件域名不允许，仅支持: ${allowedDomains}`;
+            throw `发件域名不允许，仅支持: ${allowedFrom}`;
         }
     }
 

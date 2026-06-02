@@ -38,6 +38,7 @@ export class StrategyService {
         const { sendEmail } = await import("../email/email.service");
         const content = email.html || email.text || "";
         await sendEmail({
+            from: email.from,
             to: strategy.forward_to,
             subject: `Fwd: ${email.subject}`,
             html: content,
@@ -50,14 +51,15 @@ export class StrategyService {
      * Returns the first matching enabled strategy or null.
      */
     static async matchStrategy(from: string, to: string, subject: string): Promise<StrategyEntity | null> {
-        const strategies = await strategyRepository.find({ enabled: 1 });
-        for (const s of strategies) {
-            if (s.from_pattern && !matchGlob(from, s.from_pattern)) continue;
-            if (s.to_pattern && !matchGlob(to, s.to_pattern)) continue;
-            if (s.subject_pattern && !matchGlob(subject, s.subject_pattern)) continue;
-            return s;
-        }
-        return null;
+        let best: StrategyEntity | null = null;
+        await strategyRepository.findEach((s) => {
+            if (best) return;
+            if (s.from_pattern && !matchGlob(from, s.from_pattern)) return;
+            if (s.to_pattern && !matchGlob(to, s.to_pattern)) return;
+            if (s.subject_pattern && !matchGlob(subject, s.subject_pattern)) return;
+            best = s;
+        }, { where: { enabled: 1 } });
+        return best;
     }
 }
 
