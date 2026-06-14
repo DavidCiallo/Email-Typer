@@ -51,29 +51,35 @@ export class StrategyService {
     /**
      * Resolve the from address for forwarding.
      * If the original from domain is in allowed_from_domains, keep it as-is.
-     * Otherwise, convert domain to: domain_tld@allowedDomain
+     * Otherwise, convert to: localpart__domain@allowedDomain
+     *   e.g. corfer.wei@yeah.net → corfer.wei__yeah_net@allowedDomain
      *   - preferred: same domain as the recipient (forward_to)
      *   - fallback: first allowed_from_domain
      */
     static resolveForwardFrom(originalFrom: string, forwardTo: string): string {
-        const fromDomain = (originalFrom.split("@")[1] || "").toLowerCase();
+        // Extract email from possible "Name <email>" format
+        const emailMatch = originalFrom.match(/[\w.+-]+@[\w.-]+/);
+        const rawEmail = emailMatch ? emailMatch[0] : originalFrom;
+        const fromDomain = (rawEmail.split("@")[1] || "").toLowerCase();
         const allowedFrom = (SettingsService.get("allowed_from_domains") || SettingsService.get("allowed_domains") || "")
             .split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
 
         // Already an allowed domain — keep original
-        if (allowedFrom.includes(fromDomain)) return originalFrom;
+        if (allowedFrom.includes(fromDomain)) return rawEmail;
 
-        // Convert domain to safe local part: yeah.net → yeah_net
+        // Convert to localpart__domain: corfer.wei@yeah.net → corfer.wei__yeah_net
+        const localPart = rawEmail.split("@")[0] || "unknown";
         const safeDomain = fromDomain.replace(/[^a-zA-Z0-9]/g, "_") || "unknown";
+        const convertedLocal = `${localPart}__${safeDomain}`;
 
         // Prefer recipient's domain if it's in allowed list
         const toDomain = (forwardTo.split("@")[1] || "").toLowerCase();
         if (allowedFrom.includes(toDomain)) {
-            return `${safeDomain}@${toDomain}`;
+            return `${convertedLocal}@${toDomain}`;
         }
 
         // Fallback to first allowed domain
-        return `${safeDomain}@${allowedFrom[0] || "example.com"}`;
+        return `${convertedLocal}@${allowedFrom[0] || "example.com"}`;
     }
 
     /**
