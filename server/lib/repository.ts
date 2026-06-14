@@ -167,7 +167,7 @@ class Repository<
     ): Promise<T[]> {
         const results: T[] = [];
         const since = config?.since;
-        const limit = config?.limit ?? 1000;
+        const limit = config?.limit;
         const offset = config?.offset || 0;
 
         // Use reverse read to get newest-first (matches previous Drizzle DESC order)
@@ -178,27 +178,30 @@ class Repository<
             if (where && !matches(row, where as Record<string, any>)) continue;
 
             results.push(row as T);
-            if (results.length >= offset + limit) break;
+            // If limit is set, stop reading when we have enough to satisfy offset+limit
+            if (limit !== undefined && results.length >= offset + limit) break;
         }
 
-        return results.slice(offset, offset + limit);
+        if (offset > 0 || limit !== undefined) {
+            return results.slice(offset, limit !== undefined ? offset + limit : undefined);
+        }
+        return results;
     }
 
     /** Stream rows one at a time via callback — never accumulates, avoids OOM */
     async findEach(
+        where: Record<string, any>,
         callback: (row: T) => void,
-        config?: { where?: Record<string, any>; limit?: number; since?: number; includeDeleted?: boolean },
+        config?: { limit?: number; since?: number },
     ): Promise<number> {
         let count = 0;
-        const where = config?.where;
         const since = config?.since;
         const limit = config?.limit;
-        const includeDeleted = config?.includeDeleted ?? false;
 
         for await (const row of readLines(this.collection)) {
-            if (!includeDeleted && row.delete_time) continue;
+            if (row.delete_time) continue;
             if (since && row.create_time < since) continue;
-            if (where && !matches(row, where)) continue;
+            if (!matches(row, where)) continue;
 
             callback(row as T);
             count++;
@@ -217,16 +220,6 @@ class Repository<
             total += row[field] || 0;
         }
         return total;
-    }
-
-    /** Stream through rows and return the first match — stops early, avoids accumulation */
-    async findFirst(where?: Record<string, any>, includeDeleted = false): Promise<T | null> {
-        for await (const row of readLines(this.collection)) {
-            if (!includeDeleted && row.delete_time) continue;
-            if (where && !matches(row, where as Record<string, any>)) continue;
-            return row as T;
-        }
-        return null;
     }
 
     async findOne(where: Partial<T>, reverse = false): Promise<T | null> {
@@ -318,7 +311,10 @@ class Repository<
 
                 let match = true;
                 for (const [key, val] of Object.entries(where)) {
-                    if (row[key] !== val) { match = false; break; }
+                    if (row[key] !== val) {
+                        match = false;
+                        break;
+                    }
                 }
 
                 if (match) {
@@ -366,7 +362,10 @@ class Repository<
 
                 let match = true;
                 for (const [key, val] of Object.entries(where)) {
-                    if (row[key] !== val) { match = false; break; }
+                    if (row[key] !== val) {
+                        match = false;
+                        break;
+                    }
                 }
 
                 if (match) {
@@ -391,23 +390,19 @@ class Repository<
         includeDeleted = false,
     ): Promise<boolean> {
         return this.withLock(async () => {
-            const now = Date.now();
-            let updated = false;
             const file = this.filePath();
             if (!fs.existsSync(file)) return false;
 
             const content = fs.readFileSync(file, "utf-8");
             const lines = content.split("\n");
-            const out: string[] = [];
+            const now = Date.now();
+            let updated = false;
 
-            for (const line of lines) {
-                const trimmed = line.trim();
+            for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
                 if (!trimmed) continue;
                 const row = JSON.parse(trimmed);
-                if (!includeDeleted && row.delete_time) {
-                    out.push(line);
-                    continue;
-                }
+                if (!includeDeleted && row.delete_time) continue;
 
                 let match = true;
                 for (const [key, val] of Object.entries(where)) {
@@ -418,13 +413,15 @@ class Repository<
                     const patchData = patch(row);
                     if (patchData) {
                         Object.assign(row, patchData, { update_time: now });
+                        lines[i] = JSON.stringify(row);
                         updated = true;
                     }
                 }
-                out.push(JSON.stringify(row));
             }
 
-            fs.writeFileSync(file, out.join("\n") + "\n");
+            if (updated) {
+                fs.writeFileSync(file, lines.join("\n") + "\n");
+            }
             return updated;
         });
     }

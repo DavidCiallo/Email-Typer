@@ -1,5 +1,6 @@
 import Repository from "../../lib/repository";
 import { StrategyEntity } from "../../../shared/modules/strategy/strategy.entity";
+import { SettingsService } from "../settings/settings.service";
 
 const strategyRepository: Repository<StrategyEntity> = Repository.instance("Strategy");
 
@@ -37,13 +38,45 @@ export class StrategyService {
 
         const { sendEmail } = await import("../email/email.service");
         const content = email.html || email.text || "";
+        const from = StrategyService.resolveForwardFrom(email.from, strategy.forward_to);
         await sendEmail({
-            from: email.from,
+            from,
             to: strategy.forward_to,
             subject: `Fwd: ${email.subject}`,
             html: content,
         });
-        console.log(`[Strategy] Forwarded email from ${email.from} to ${strategy.forward_to}`);
+        console.log(`[Strategy] Forwarded email from ${from} to ${strategy.forward_to}`);
+    }
+
+    /**
+     * Resolve the from address for forwarding.
+     * If the original from domain is in allowed_from_domains, keep it as-is.
+     * Otherwise, convert to: user_domain@allowedDomain
+     *   - preferred: same domain as the recipient (forward_to)
+     *   - fallback: first allowed_from_domain
+     */
+    static resolveForwardFrom(originalFrom: string, forwardTo: string): string {
+        const fromDomain = originalFrom.split("@")[1]?.toLowerCase() || "";
+        const allowedFrom = (SettingsService.get("allowed_from_domains") || SettingsService.get("allowed_domains") || "")
+            .split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+
+        // Already an allowed domain — keep original
+        if (allowedFrom.includes(fromDomain)) return originalFrom;
+
+        // Convert user@ext.com → user_ext_com@allowedDomain
+        const [localPart, domain] = originalFrom.split("@");
+        const safeLocal = (localPart || "unknown").replace(/[^a-zA-Z0-9._-]/g, "_");
+        const safeDomain = (domain || "unknown").replace(/[^a-zA-Z0-9._-]/g, "_");
+        const convertedLocal = `${safeLocal}_${safeDomain}`;
+
+        // Prefer recipient's domain if it's in allowed list
+        const toDomain = forwardTo.split("@")[1]?.toLowerCase() || "";
+        if (allowedFrom.includes(toDomain)) {
+            return `${convertedLocal}@${toDomain}`;
+        }
+
+        // Fallback to first allowed domain
+        return `${convertedLocal}@${allowedFrom[0] || "example.com"}`;
     }
 
     /**
