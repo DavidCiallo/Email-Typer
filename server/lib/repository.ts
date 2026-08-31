@@ -90,10 +90,15 @@ async function* readLines(name: string): AsyncGenerator<Row, void, void> {
     }
 }
 
-/** Check if a row matches the where conditions. Supports operators: $eq, $ne, $gt, $gte, $lt, $lte, $in. */
+/** Check if a row matches the where conditions. Supports operators: $eq, $ne, $gt, $gte, $lt, $lte, $in, $contains, $or. */
 function matches<T extends Row>(row: T, where: Record<string, any>): boolean {
     for (const [key, val] of Object.entries(where)) {
         if (val === undefined || val === "") continue;
+        // $or: array of sub-conditions, at least one must match
+        if (key === "$or") {
+            if (!Array.isArray(val) || !val.some((sub: Record<string, any>) => matches(row, sub))) return false;
+            continue;
+        }
         // null is a valid value for $eq / $ne
         if (val === null) {
             if (row[key] !== null) return false;
@@ -109,6 +114,10 @@ function matches<T extends Row>(row: T, where: Record<string, any>): boolean {
                 if (op === "$lt")  { if (!(rowVal < opVal)) return false; }
                 if (op === "$lte") { if (!(rowVal <= opVal)) return false; }
                 if (op === "$in")  { if (!Array.isArray(opVal) || !opVal.includes(rowVal)) return false; }
+                if (op === "$contains") {
+                    if (rowVal === null || rowVal === undefined) return false;
+                    if (!String(rowVal).toLowerCase().includes(String(opVal).toLowerCase())) return false;
+                }
             }
         } else {
             if (row[key] !== val) return false;
@@ -163,16 +172,17 @@ class Repository<
 
     async find(
         where?: Record<string, any>,
-        config?: { limit?: number; offset?: number; since?: number },
+        config?: { limit?: number; offset?: number; since?: number; includeDeleted?: boolean },
     ): Promise<T[]> {
         const results: T[] = [];
         const since = config?.since;
         const limit = config?.limit;
         const offset = config?.offset || 0;
+        const includeDeleted = config?.includeDeleted ?? false;
 
         // Use reverse read to get newest-first (matches previous Drizzle DESC order)
         for await (const row of readLinesReverse(this.collection)) {
-            if (row.delete_time) continue;
+            if (row.delete_time && !includeDeleted) continue;
             if (since && row.create_time < since) continue;
 
             if (where && !matches(row, where as Record<string, any>)) continue;
@@ -454,10 +464,10 @@ class Repository<
         });
     }
 
-    async count(where?: Partial<T>, since?: number): Promise<number> {
+    async count(where?: Partial<T>, since?: number, includeDeleted = false): Promise<number> {
         let count = 0;
         for await (const row of readLines(this.collection)) {
-            if (row.delete_time) continue;
+            if (row.delete_time && !includeDeleted) continue;
             if (since && row.create_time < since) continue;
             if (where && !matches(row, where as Record<string, any>)) continue;
             count++;

@@ -1,4 +1,3 @@
-import { hashGenerate } from "../methods/crypto";
 import { AccountService } from "../modules/account/account.service";
 import { SettingsService } from "../modules/settings/settings.service";
 import { startEmailWatcher } from "../modules/email/email.service";
