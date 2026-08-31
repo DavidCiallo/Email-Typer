@@ -1,16 +1,20 @@
-import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
 import { StrategyRouter } from "../../api/instance";
 import StrategyFormModal from "./StrategyFormModal";
 import StrategyList from "./StrategyList";
 import StrategyTable from "./StrategyTable";
-import { Button, Input } from "@heroui/react";
+import StrategyTester from "./StrategyTester";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { FlaskConical } from "lucide-react";
 import { toast } from "../../methods/notify";
 
 const StrategyPage = () => {
     const [strategyList, setStrategyList] = useState<any[]>([]);
     const [focusStrategy, setFocusStrategy] = useState<any | null>(null);
     const [isModalOpen, setModalOpen] = useState(false);
+    const [isTesterOpen, setTesterOpen] = useState(false);
 
     function refreshList() {
         StrategyRouter.list({}, (data: any) => {
@@ -35,6 +39,13 @@ const StrategyPage = () => {
         });
     }
 
+    function toggleStrategy(row: any, enabled: boolean) {
+        StrategyRouter.save({ strategy: { ...row, enabled: enabled ? 1 : 0 } }, () => {
+            toast({ title: enabled ? "策略已启用" : "策略已停用", color: "primary" });
+            refreshList();
+        });
+    }
+
     function openCreate() {
         setFocusStrategy(null);
         setModalOpen(true);
@@ -50,45 +61,54 @@ const StrategyPage = () => {
     }, []);
 
     return (
-        <div className="max-w-screen">
-            <Header name="邮箱策略" />
-            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6">
-                <div className="w-full flex flex-row justify-between items-center mb-4">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <div className="flex items-end justify-between gap-4">
+                <div className="flex w-full flex-col gap-2 md:w-1/3">
+                    <Label htmlFor="default-forward">默认转发邮箱</Label>
                     <Input
-                        className="w-3/4 md:w-1/4"
-                        size="sm"
-                        label="默认转发邮箱"
-                        variant="bordered"
+                        id="default-forward"
                         defaultValue={localStorage.getItem("default_forward") || ""}
-                        onValueChange={(v) => localStorage.setItem("default_forward", v)}
+                        onChange={(e) => localStorage.setItem("default_forward", e.target.value)}
                     />
-                    <Button
-                        onClick={openCreate}
-                        color="primary" variant="bordered" className="ml-2 text-primary"
-                    >
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" onClick={() => setTesterOpen(true)}>
+                        <FlaskConical className="size-4" />
+                        规则测试
+                    </Button>
+                    <Button onClick={openCreate} variant="outline">
                         新建策略
                     </Button>
                 </div>
-                <div className="w-full hidden md:block">
-                    <StrategyTable
-                        strategyList={strategyList}
-                        openEdit={openEdit}
-                        deleteStrategy={submitDelete}
-                    />
-                </div>
-                <div className="w-full block sm:hidden">
-                    <StrategyList
-                        strategyList={strategyList}
-                        openEdit={openEdit}
-                        deleteStrategy={submitDelete}
-                    />
-                </div>
             </div>
+
+            <div className="hidden w-full md:block">
+                <StrategyTable
+                    strategyList={strategyList}
+                    openEdit={openEdit}
+                    deleteStrategy={submitDelete}
+                    toggleStrategy={toggleStrategy}
+                />
+            </div>
+            <div className="block w-full md:hidden">
+                <StrategyList
+                    strategyList={strategyList}
+                    openEdit={openEdit}
+                    deleteStrategy={submitDelete}
+                    toggleStrategy={toggleStrategy}
+                />
+            </div>
+
             <StrategyFormModal
                 isOpen={isModalOpen}
                 onOpenChange={(v) => { setModalOpen(v); if (!v) setFocusStrategy(null); }}
                 onSubmit={submitSave}
                 strategy={focusStrategy}
+            />
+            <StrategyTester
+                isOpen={isTesterOpen}
+                onOpenChange={setTesterOpen}
+                strategyList={strategyList}
             />
         </div>
     )
