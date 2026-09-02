@@ -2,6 +2,7 @@ import Repository from "../../lib/repository";
 import { EmailEntity } from "../../../shared/modules/email/email.entity";
 import { SettingsService } from "../settings/settings.service";
 import { SafetyService } from "../safety/safety.service";
+import { broadcastWsMessage } from "../../lib/mount";
 import { nanoid } from "nanoid";
 import chokidar from "chokidar";
 import path from "path";
@@ -83,12 +84,38 @@ export function buildVerificationEmail(verifyUrl: string): { subject: string; ht
 
 // ========== Email Storage ==========
 
+/** Push a "new email arrived" notification to all connected dashboard clients. */
+function notifyNewEmail(email: Partial<EmailEntity>): void {
+    try {
+        broadcastWsMessage({
+            name: "email:new",
+            data: {
+                id: email.id,
+                from: email.from,
+                to: email.to,
+                subject: email.subject,
+                time: email.time,
+                account_id: email.account_id,
+            },
+        });
+    } catch (e) {
+        console.error("[EmailService] Broadcast failed:", e);
+    }
+}
+
 export class EmailService {
-    static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number }): Promise<{ list: EmailEntity[]; total: number }> {
-        const { limit, offset = 0 } = config ?? {};
-        const total = await emailRepository.count(where);
-        const list = await emailRepository.find(where, { limit, offset });
+    static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number; includeDeleted?: boolean }): Promise<{ list: EmailEntity[]; total: number }> {
+        const { limit, offset = 0, includeDeleted = false } = config ?? {};
+        const total = await emailRepository.count(where, undefined, includeDeleted);
+        const list = await emailRepository.find(where, { limit, offset, includeDeleted });
         return { list, total };
+    }
+
+    /** Stream distinct recipient accounts (non-deleted emails) for filter dropdowns. */
+    static async findEachAccount(callback: (account: string) => void): Promise<void> {
+        await emailRepository.findEach((e) => {
+            if (e.account_id) callback(e.account_id);
+        });
     }
 
     static async findById(id: string): Promise<EmailEntity | null> {
@@ -108,6 +135,20 @@ export class EmailService {
     }
 
     /**
+     * Post-storage pipeline shared by all ingest paths:
+     * forward only clean mail, then broadcast to dashboard clients.
+     */
+    private static async finalizeIngest(stored: EmailEntity, blocked: boolean): Promise<void> {
+        if (!blocked) {
+            const { StrategyService } = await import("../strategy/strategy.service");
+            StrategyService.matchAndForward(stored).catch(e => {
+                console.error("[EmailService] Strategy forward failed:", e);
+            });
+        }
+        notifyNewEmail(stored);
+    }
+
+    /**
      * Receive raw email string, parse and store it in the repository.
      * Used by the /api/email/receive endpoint (called by external MTA).
      */
@@ -115,16 +156,15 @@ export class EmailService {
         const parsed = EmailService.parseRawEmail(raw);
         if (!parsed) return null;
 
-        // Safety check: block blacklisted senders and sensitive words
-        const blocked = await SafetyService.isBlocked(
+        // Evaluate safety rules first — blocked mail is stored but never forwarded
+        const verdict = await SafetyService.evaluate(
             parsed.from || "",
             parsed.subject || "",
             parsed.html || "",
             parsed.text || "",
         );
-        if (blocked) {
-            console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}"`);
-            return null;
+        if (verdict.blocked) {
+            console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}" (${verdict.blockedBy}: ${verdict.rule})`);
         }
 
         const email: Partial<EmailEntity> = {
@@ -136,15 +176,13 @@ export class EmailService {
             text: parsed.text || "",
             time: parsed.time || Date.now(),
             account_id: parsed.account_id || "",
+            blocked: verdict.blocked ? 1 : 0,
+            blocked_by: verdict.blockedBy,
+            block_rule: verdict.rule,
         };
 
         const stored = await emailRepository.insert(email);
-
-        // Trigger forwarding strategies
-        const { StrategyService } = await import("../strategy/strategy.service");
-        StrategyService.matchAndForward(stored).catch(e => {
-            console.error("[EmailService] Strategy forward failed:", e);
-        });
+        await EmailService.finalizeIngest(stored, verdict.blocked);
 
         return stored;
     }
@@ -206,15 +244,15 @@ export class EmailService {
                     continue;
                 }
 
-                const blocked = await SafetyService.isBlocked(
+                // Blocked mail is stored too — just never forwarded
+                const verdict = await SafetyService.evaluate(
                     parsed.from || "",
                     parsed.subject || "",
                     parsed.html || "",
                     parsed.text || "",
                 );
-                if (blocked) {
-                    console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}"`);
-                    continue;
+                if (verdict.blocked) {
+                    console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}" (${verdict.blockedBy}: ${verdict.rule})`);
                 }
 
                 const email: Partial<EmailEntity> = {
@@ -226,16 +264,15 @@ export class EmailService {
                     text: parsed.text || "",
                     time: parsed.time || Date.now(),
                     account_id: parsed.account_id || "",
+                    blocked: verdict.blocked ? 1 : 0,
+                    blocked_by: verdict.blockedBy,
+                    block_rule: verdict.rule,
                 };
 
                 await emailRepository.insert(email);
                 existingKeys.add(EmailService.dedupKey(email));
                 imported++;
-
-                const { StrategyService } = await import("../strategy/strategy.service");
-                StrategyService.matchAndForward(email as any).catch(e => {
-                    console.error("[EmailService] Strategy forward failed:", e);
-                });
+                await EmailService.finalizeIngest(email as EmailEntity, verdict.blocked);
             } catch (e) {
                 console.error("[EmailService] Failed to import:", fullPath, e);
             }
@@ -260,6 +297,7 @@ export class EmailService {
     /**
      * Parse an email file from disk and store it in the repository.
      * Simple MIME parser — extracts headers and body.
+     * Full ingest pipeline: safety evaluation → store → forward (if clean) → broadcast.
      */
     static async importFromFile(filePath: string): Promise<EmailEntity | null> {
         const resolvedPath = path.resolve(filePath);
@@ -273,6 +311,17 @@ export class EmailService {
             const exists = await EmailService.dedupExists(parsed);
             if (exists) return null;
 
+            // Blocked mail is stored too — just never forwarded
+            const verdict = await SafetyService.evaluate(
+                parsed.from || "",
+                parsed.subject || "",
+                parsed.html || "",
+                parsed.text || "",
+            );
+            if (verdict.blocked) {
+                console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}" (${verdict.blockedBy}: ${verdict.rule})`);
+            }
+
             const email: Partial<EmailEntity> = {
                 eid: nanoid(12),
                 from: parsed.from || "",
@@ -282,9 +331,14 @@ export class EmailService {
                 text: parsed.text || "",
                 time: parsed.time || Date.now(),
                 account_id: parsed.account_id || "",
+                blocked: verdict.blocked ? 1 : 0,
+                blocked_by: verdict.blockedBy,
+                block_rule: verdict.rule,
             };
 
-            return await emailRepository.insert(email);
+            const stored = await emailRepository.insert(email);
+            await EmailService.finalizeIngest(stored, verdict.blocked);
+            return stored;
         } catch (e) {
             console.error("Failed to import email from file:", filePath, e);
             return null;
@@ -492,13 +546,9 @@ export function startEmailWatcher(maildirPath: string): void {
         if (!normalized.includes("/new/")) return;
 
         try {
-            const email = await EmailService.importFromFile(filePath);
-            if (email) {
-                const { StrategyService } = await import("../strategy/strategy.service");
-                StrategyService.matchAndForward(email).catch(e => {
-                    console.error("[EmailWatcher] Strategy forward failed:", e);
-                });
-            }
+            // importFromFile runs the full ingest pipeline:
+            // safety evaluation → store → forward (if clean) → broadcast
+            await EmailService.importFromFile(filePath);
         } catch (e) {
             console.error("[EmailWatcher] Failed to process email:", e);
         }

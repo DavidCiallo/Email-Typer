@@ -27,36 +27,43 @@ export class SafetyService {
     }
 
     /**
-     * Check whether an incoming email should be blocked.
+     * Evaluate an incoming email against safety rules.
      * Priority: whitelist > blacklist > sensitive_word
+     * The email is stored regardless — the verdict only decides forwarding.
      * Streams rules one at a time — no accumulation in memory.
      */
-    static async isBlocked(from: string, subject: string, html?: string, text?: string): Promise<boolean> {
+    static async evaluate(
+        from: string,
+        subject: string,
+        html?: string,
+        text?: string,
+    ): Promise<{ blocked: boolean; blockedBy: string; rule: string }> {
         const body = (html || "") + (text || "");
 
         let whitelisted = false;
-        let blacklisted = false;
-        let sensitive = false;
+        let blacklistRule = "";
+        let sensitiveRule = "";
 
         await safetyRepository.findEach((e) => {
             if (e.type === "whitelist" && matchPattern(from, e.value)) {
                 whitelisted = true;
             }
-            if (!blacklisted && e.type === "blacklist" && matchPattern(from, e.value)) {
-                blacklisted = true;
+            if (!blacklistRule && e.type === "blacklist" && matchPattern(from, e.value)) {
+                blacklistRule = e.value;
             }
-            if (!sensitive && e.type === "sensitive_word") {
+            if (!sensitiveRule && e.type === "sensitive_word") {
                 const keyword = e.value.toLowerCase();
                 if (subject.toLowerCase().includes(keyword) || body.toLowerCase().includes(keyword)) {
-                    sensitive = true;
+                    sensitiveRule = e.value;
                 }
             }
         });
 
         // Whitelist takes priority over everything
-        if (whitelisted) return false;
-        // Blacklist and sensitive words both cause blocking
-        return blacklisted || sensitive;
+        if (whitelisted) return { blocked: false, blockedBy: "", rule: "" };
+        if (blacklistRule) return { blocked: true, blockedBy: "blacklist", rule: blacklistRule };
+        if (sensitiveRule) return { blocked: true, blockedBy: "sensitive_word", rule: sensitiveRule };
+        return { blocked: false, blockedBy: "", rule: "" };
     }
 }
 

@@ -1,7 +1,7 @@
 import { BaseRequest, BaseResponse } from "../../lib/default/decorator";
 import { EmailEntity } from "./email.entity";
 
-export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id">;
+export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id" | "blocked" | "blocked_by" | "block_rule">;
 
 // Query email list
 export class EmailListRequest implements BaseRequest {
@@ -9,12 +9,18 @@ export class EmailListRequest implements BaseRequest {
     public limit?: number;
     public offset?: number;
     public account_id?: string;
+    public q?: string;
+    public archived?: boolean;
+    public blocked?: boolean;
 
     constructor(origin: Partial<EmailListRequest>) {
         origin.auth && (this.auth = origin.auth);
         this.limit = origin.limit;
         this.offset = origin.offset;
         this.account_id = origin.account_id;
+        this.q = origin.q;
+        this.archived = origin.archived;
+        this.blocked = origin.blocked;
     }
     static self(unsafe: EmailListRequest) {
         return new EmailListRequest(unsafe);
@@ -24,7 +30,7 @@ export class EmailListRequest implements BaseRequest {
 export class EmailListResponse implements BaseResponse<EmailDTO[]> {
     public success: boolean;
     public message: string;
-    public data?: { list: EmailDTO[]; total: number };
+    public data?: { list: EmailDTO[]; total: number; accounts?: string[] };
 
     constructor(origin: EmailListResponse) {
         this.success = origin.success;

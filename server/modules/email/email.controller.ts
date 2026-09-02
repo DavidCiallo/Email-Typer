@@ -17,12 +17,32 @@ async function list(request: EmailListRequest) {
     const email = getIdentifyByVerify(request.auth || "");
     if (!email) throw "Unauthorized";
 
-    const where: Record<string, any> = { delete_time: null };
+    const archived = request.archived === true;
+    const where: Record<string, any> = archived
+        ? { delete_time: { $ne: null } }
+        : { delete_time: null };
     if (request.account_id) {
         where.account_id = request.account_id;
     }
+    const q = (request.q || "").trim();
+    if (q) {
+        where.$or = [
+            { from: { $contains: q } },
+            { to: { $contains: q } },
+            { subject: { $contains: q } },
+        ];
+    }
+    // "Only intercepted" filter — never filters blocked=0 by default
+    // so legacy rows without the flag stay visible in the inbox.
+    if (request.blocked === true) {
+        where.blocked = 1;
+    }
 
-    const result = await EmailService.findList(where, { limit: request.limit, offset: request.offset });
+    const result = await EmailService.findList(where, {
+        limit: request.limit,
+        offset: request.offset,
+        includeDeleted: archived,
+    });
     const list = result.list.map(e => ({
         id: e.id,
         eid: e.eid,
@@ -33,8 +53,16 @@ async function list(request: EmailListRequest) {
         text: e.text,
         time: e.time,
         account_id: e.account_id,
+        blocked: e.blocked || 0,
+        blocked_by: e.blocked_by || "",
+        block_rule: e.block_rule || "",
     }));
-    return { list, total: result.total };
+
+    // Distinct recipient accounts (for the filter dropdown)
+    const accountSet = new Set<string>();
+    await EmailService.findEachAccount((account: string) => accountSet.add(account));
+
+    return { list, total: result.total, accounts: Array.from(accountSet).sort() };
 }
 
 async function detail(request: EmailDetailRequest) {
