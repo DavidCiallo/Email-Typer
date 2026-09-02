@@ -15,7 +15,7 @@ function buildApiClient(routes: Record<string, RouteDef>, http: HttpClientServic
     for (const [name, route] of Object.entries(routes)) {
         if (name === "base" || name === "prefix") continue;
 
-        const url = routes.base + routes.prefix + (route as RouteDef).path;
+        const url = (routes as any).base + (routes as any).prefix + (route as RouteDef).path;
 
         // All routes use POST as the method (body-based requests)
         client[name] = async (body: Record<string, any>, callback?: Function) => {

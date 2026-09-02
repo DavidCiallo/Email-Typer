@@ -34,3 +34,10 @@ export function formatEmail(raw: string): { name: string; email: string } {
 
     return { name, email };
 }
+
+/** Human label for a safety block reason ("blacklist" | "sensitive_word"). */
+export function blockLabel(blockedBy?: string): string {
+    if (blockedBy === "blacklist") return "黑名单";
+    if (blockedBy === "sensitive_word") return "敏感词";
+    return "拦截";
+}
