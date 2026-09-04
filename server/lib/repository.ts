@@ -6,7 +6,15 @@ import { fileURLToPath } from "url";
 
 const _filename = fileURLToPath(import.meta.url);
 const SERVER_DIR = path.resolve(path.dirname(_filename), "..");
-const DATA_DIR = path.join(path.resolve(SERVER_DIR, ".."), "data");
+
+/** DATA_DIR can be overridden via env (tests / portable installs); defaults to <repo>/data. */
+export function getDataDir(): string {
+    return process.env.DATA_DIR
+        ? path.resolve(process.env.DATA_DIR)
+        : path.join(path.resolve(SERVER_DIR, ".."), "data");
+}
+
+const DATA_DIR = getDataDir();
 
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });

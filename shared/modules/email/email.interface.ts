@@ -1,7 +1,10 @@
 import { BaseRequest, BaseResponse } from "../../lib/default/decorator";
 import { EmailEntity } from "./email.entity";
 
-export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id" | "blocked" | "blocked_by" | "block_rule">;
+export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id" | "blocked" | "blocked_by" | "block_rule" | "message_id" | "source" | "mailbox_id"> & {
+    has_attachments: boolean;
+    attachment_count: number;
+};
 
 // Query email list
 export class EmailListRequest implements BaseRequest {
@@ -12,6 +15,8 @@ export class EmailListRequest implements BaseRequest {
     public q?: string;
     public archived?: boolean;
     public blocked?: boolean;
+    public source?: string;
+    public mailbox_id?: string;
 
     constructor(origin: Partial<EmailListRequest>) {
         origin.auth && (this.auth = origin.auth);
@@ -21,6 +26,8 @@ export class EmailListRequest implements BaseRequest {
         this.q = origin.q;
         this.archived = origin.archived;
         this.blocked = origin.blocked;
+        this.source = origin.source;
+        this.mailbox_id = origin.mailbox_id;
     }
     static self(unsafe: EmailListRequest) {
         return new EmailListRequest(unsafe);
@@ -212,6 +219,77 @@ export class EmailRestoreResponse implements BaseResponse<null> {
     public message: string;
 
     constructor(origin: EmailRestoreResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+    }
+}
+
+// Push structured email via API (auth: per-mailbox api_key or the receive master key)
+export interface EmailPushAttachment {
+    filename: string;
+    contentType?: string;
+    base64?: string;
+}
+
+export class EmailPushRequest implements BaseRequest {
+    public auth?: string;
+    public to?: string;          // required when authenticating with the master key
+    public from?: string;
+    public subject?: string;
+    public html?: string;
+    public text?: string;
+    public attachments?: EmailPushAttachment[];
+    public message_id?: string;
+
+    constructor(origin: Partial<EmailPushRequest>) {
+        origin.auth && (this.auth = origin.auth);
+        this.to = origin.to;
+        this.from = origin.from;
+        this.subject = origin.subject;
+        this.html = origin.html;
+        this.text = origin.text;
+        this.attachments = origin.attachments;
+        this.message_id = origin.message_id;
+    }
+    static self(unsafe: any) {
+        return new EmailPushRequest(unsafe);
+    }
+}
+
+export class EmailPushResponse implements BaseResponse<{ id: string; message_id: string }> {
+    public success: boolean;
+    public message: string;
+    public data?: { id: string; message_id: string };
+
+    constructor(origin: EmailPushResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+// Download one attachment of an email (responds with the raw file)
+export class EmailAttachmentRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+    public index: number;
+
+    constructor(origin: Partial<EmailAttachmentRequest>) {
+        if (!origin.id) throw new Error("Email id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+        this.index = Number(origin.index) || 0;
+    }
+    static self(unsafe: any) {
+        return new EmailAttachmentRequest(unsafe);
+    }
+}
+
+export class EmailAttachmentResponse implements BaseResponse<null> {
+    public success: boolean;
+    public message: string;
+
+    constructor(origin: EmailAttachmentResponse) {
         this.success = origin.success;
         this.message = origin.message;
     }

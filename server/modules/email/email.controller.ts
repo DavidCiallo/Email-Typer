@@ -1,3 +1,4 @@
+import path from "path";
 import {
     EmailListRequest,
     EmailDetailRequest,
@@ -6,10 +7,15 @@ import {
     EmailScanRequest,
     EmailDeleteRequest,
     EmailRestoreRequest,
+    EmailPushRequest,
+    EmailAttachmentRequest,
 } from "../../../shared/modules/email/email.interface";
 import { emailRoutes } from "../../../shared/modules/email/email.router";
 import { SettingsService } from "../settings/settings.service";
-import { EmailService, sendEmail } from "./email.service";
+import { EmailService, sendEmail, maildirRoot } from "./email.service";
+import { MailboxService } from "../mailbox/mailbox.service";
+import { composeRawEmail, parseRawEmail, ComposeAttachment } from "../../lib/mime";
+import { getDataDir } from "../../lib/repository";
 import { getIdentifyByVerify } from "../auth/auth.service";
 
 async function list(request: EmailListRequest) {
@@ -37,6 +43,12 @@ async function list(request: EmailListRequest) {
     if (request.blocked === true) {
         where.blocked = 1;
     }
+    if (request.source) {
+        where.source = request.source;
+    }
+    if (request.mailbox_id) {
+        where.mailbox_id = request.mailbox_id;
+    }
 
     const result = await EmailService.findList(where, {
         limit: request.limit,
@@ -56,6 +68,11 @@ async function list(request: EmailListRequest) {
         blocked: e.blocked || 0,
         blocked_by: e.blocked_by || "",
         block_rule: e.block_rule || "",
+        message_id: e.message_id || "",
+        source: e.source || "maildir",
+        mailbox_id: e.mailbox_id || "",
+        has_attachments: !!e.attachments?.some(a => !a.skipped),
+        attachment_count: (e.attachments || []).filter(a => !a.skipped).length,
     }));
 
     // Distinct recipient accounts (for the filter dropdown)
@@ -108,8 +125,107 @@ async function receive(request: EmailReceiveRequest) {
 
     const raw = req.raw || req.__raw_body || "";
     const email = await EmailService.receiveEmail(raw);
-    if (!email) throw "Failed to parse email";
+    if (!email) {
+        // duplicate delivery — report the already-stored copy idempotently
+        const parsed = parseRawEmail(raw);
+        const existing = parsed?.message_id ? await EmailService.findByMessageId(parsed.message_id) : null;
+        if (!existing) throw "Failed to parse email";
+        return { id: existing.id };
+    }
     return { id: email.id };
+}
+
+/**
+ * Push a structured email through a mailbox's API key.
+ * The message is composed into a valid RFC 5322 mail, archived into the
+ * maildir (tmp → new rename) and then ingested through the shared pipeline.
+ */
+async function push(request: EmailPushRequest) {
+    request = EmailPushRequest.self(request);
+    const req = request as any;
+    const apiKey = req.__headers?.["x-api-key"] || req.auth || "";
+
+    let to = (request.to || "").trim();
+    let mailbox = await MailboxService.findByApiKey(apiKey);
+    if (mailbox) {
+        // the mailbox owns the address — ignore any client-supplied `to`
+        to = mailbox.address;
+    } else {
+        const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
+        if (!masterKey || apiKey !== masterKey) throw "Unauthorized";
+        if (!to) throw "Missing `to` address";
+        mailbox = null;
+    }
+
+    const subject = request.subject || "";
+    const html = request.html || "";
+    const text = request.text || "";
+    if (!subject && !html && !text) throw "Subject or body is required";
+
+    const from = request.from || `push@${to.split("@")[1] || "cfrs.local"}`;
+    const attachments: ComposeAttachment[] = (request.attachments || []).slice(0, 50).map((a, i) => ({
+        filename: (a.filename || `attachment_${i + 1}`).slice(0, 200),
+        contentType: a.contentType,
+        content: Buffer.from((a.base64 || "").replace(/\s/g, ""), "base64"),
+    })).filter(a => a.content.length > 0);
+
+    const raw = composeRawEmail({
+        from,
+        to,
+        subject,
+        html: html || undefined,
+        text: text || undefined,
+        attachments: attachments.length ? attachments : undefined,
+        headers: {
+            "X-CFRS-Source": "api",
+            ...(mailbox ? { "X-CFRS-Mailbox": mailbox.id } : {}),
+        },
+        messageId: request.message_id,
+    });
+
+    const stored = await EmailService.ingestRaw(raw, {
+        source: "api",
+        mailboxId: mailbox?.id,
+        folder: to.split("@")[1] || "_api",
+    });
+    if (!stored) {
+        // duplicate (same message_id already ingested) — report it idempotently
+        const existing = request.message_id ? await EmailService.findByMessageId(request.message_id) : null;
+        if (!existing) throw "Failed to ingest pushed email";
+        return { id: existing.id, message_id: existing.message_id };
+    }
+    return { id: stored.id, message_id: stored.message_id };
+}
+
+/**
+ * Download one attachment. Responds with the raw file (mounted as a Response).
+ */
+async function attachment(request: EmailAttachmentRequest) {
+    request = EmailAttachmentRequest.self(request);
+    const email = getIdentifyByVerify(request.auth || "");
+    if (!email) throw "Unauthorized";
+
+    const data = await EmailService.findById(request.id);
+    if (!data) throw "Email not found";
+    const meta = (data.attachments || [])[request.index];
+    if (!meta) throw "Attachment not found";
+    if (meta.skipped || !meta.path) throw "Attachment was not stored (size limit exceeded)";
+
+    const filePath = path.join(getDataDir(), "attachments", String(data.eid), meta.path);
+    // @ts-ignore Bun global
+    const file = Bun.file(filePath);
+    if (!(await file.exists())) throw "Attachment file missing";
+
+    const encoded = encodeURIComponent(meta.filename);
+    const fallback = meta.filename.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
+    return new Response(file, {
+        headers: {
+            "Content-Type": meta.contentType || "application/octet-stream",
+            "Content-Length": String(meta.size),
+            "Content-Disposition": `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`,
+            "Access-Control-Allow-Origin": "*",
+        },
+    });
 }
 
 async function scan(request: EmailScanRequest) {
@@ -117,7 +233,7 @@ async function scan(request: EmailScanRequest) {
     const email = getIdentifyByVerify(request.auth || "");
     if (!email) throw "Unauthorized";
 
-    const maildirPath = request.path || process.env.MAILDIR_PATH || "./maildir";
+    const maildirPath = request.path || maildirRoot();
     const result = await EmailService.scanDirectory(maildirPath);
     return result;
 }
@@ -142,5 +258,5 @@ async function restore(request: EmailRestoreRequest) {
 
 export const emailMount = {
     routes: emailRoutes,
-    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore },
+    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore, push, attachment },
 };

@@ -6,16 +6,20 @@ import {
     EmailScanRequest, EmailScanResponse,
     EmailDeleteRequest, EmailDeleteResponse,
     EmailRestoreRequest, EmailRestoreResponse,
+    EmailPushRequest, EmailPushResponse,
+    EmailAttachmentRequest, EmailAttachmentResponse,
 } from "./email.interface";
 
 export const emailRoutes = {
     base: "/api",
     prefix: "/email",
-    list:    { path: "/list",    request: {} as EmailListRequest,    response: {} as EmailListResponse },
-    detail:  { path: "/detail",  request: {} as EmailDetailRequest,  response: {} as EmailDetailResponse },
-    send:    { path: "/send",    request: {} as EmailSendRequest,    response: {} as EmailSendResponse },
-    receive: { path: "/receive", request: {} as EmailReceiveRequest, response: {} as EmailReceiveResponse },
-    scan:    { path: "/scan",    request: {} as EmailScanRequest,    response: {} as EmailScanResponse },
-    delete:  { path: "/delete",  request: {} as EmailDeleteRequest,  response: {} as EmailDeleteResponse },
-    restore: { path: "/restore", request: {} as EmailRestoreRequest, response: {} as EmailRestoreResponse },
+    list:       { path: "/list",       request: {} as EmailListRequest,       response: {} as EmailListResponse },
+    detail:     { path: "/detail",     request: {} as EmailDetailRequest,     response: {} as EmailDetailResponse },
+    send:       { path: "/send",       request: {} as EmailSendRequest,       response: {} as EmailSendResponse },
+    receive:    { path: "/receive",    request: {} as EmailReceiveRequest,    response: {} as EmailReceiveResponse },
+    scan:       { path: "/scan",       request: {} as EmailScanRequest,       response: {} as EmailScanResponse },
+    delete:     { path: "/delete",     request: {} as EmailDeleteRequest,     response: {} as EmailDeleteResponse },
+    restore:    { path: "/restore",    request: {} as EmailRestoreRequest,    response: {} as EmailRestoreResponse },
+    push:       { path: "/push",       request: {} as EmailPushRequest,       response: {} as EmailPushResponse },
+    attachment: { path: "/attachment", request: {} as EmailAttachmentRequest, response: {} as EmailAttachmentResponse },
 } as const;
