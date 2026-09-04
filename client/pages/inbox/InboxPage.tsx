@@ -30,6 +30,7 @@ const EmailPage = () => {
     const [searchInput, setSearchInput] = useState("");
     const [search, setSearch] = useState("");
     const [accountFilter, setAccountFilter] = useState("all");
+    const [sourceFilter, setSourceFilter] = useState("all");
     const [blockedOnly, setBlockedOnly] = useState(false);
 
     const [focusEmail, setFocusEmail] = useState<any | null>(null);
@@ -46,8 +47,8 @@ const EmailPage = () => {
     const maxTimeRef = useRef<number | null>(null);
 
     // Keep latest values accessible inside interval / ws handlers
-    const stateRef = useRef({ search, accountFilter, page, blockedOnly });
-    stateRef.current = { search, accountFilter, page, blockedOnly };
+    const stateRef = useRef({ search, accountFilter, sourceFilter, page, blockedOnly });
+    stateRef.current = { search, accountFilter, sourceFilter, page, blockedOnly };
 
     function submitAddStrategy(body: any) {
         StrategyRouter.save({ strategy: body }, () => {
@@ -89,6 +90,7 @@ const EmailPage = () => {
                 account_id: s.accountFilter !== "all" ? s.accountFilter : undefined,
                 q: s.search || undefined,
                 blocked: s.blockedOnly || undefined,
+                source: s.sourceFilter !== "all" ? s.sourceFilter : undefined,
             },
             renderEmail,
         );
@@ -108,10 +110,10 @@ const EmailPage = () => {
         refreshArchived();
     }
 
-    // Refetch whenever page / search / account filter / blocked filter changes (also covers initial load)
+    // Refetch whenever page / search / filters change (also covers initial load)
     useEffect(() => {
         queryEmails({ page });
-    }, [page, search, accountFilter, blockedOnly]);
+    }, [page, search, accountFilter, sourceFilter, blockedOnly]);
 
     // Debounce the search input
     useEffect(() => {
@@ -192,6 +194,23 @@ const EmailPage = () => {
                         {accounts.map((a) => (
                             <SelectItem key={a} value={a}>{a}</SelectItem>
                         ))}
+                    </SelectContent>
+                </Select>
+
+                {/* Source filter */}
+                <Select
+                    value={sourceFilter}
+                    onValueChange={(v) => { setSourceFilter(v); setPage(1); }}
+                >
+                    <SelectTrigger className="w-36">
+                        <SelectValue placeholder="全部来源" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">全部来源</SelectItem>
+                        <SelectItem value="maildir">收信</SelectItem>
+                        <SelectItem value="api">API</SelectItem>
+                        <SelectItem value="imap">IMAP</SelectItem>
+                        <SelectItem value="receive">接口</SelectItem>
                     </SelectContent>
                 </Select>
 

@@ -1,11 +1,11 @@
-import { formatEmail, blockLabel } from "../../methods/format";
+import { formatEmail, blockLabel, sourceLabel } from "../../methods/format";
 import { extractCodes } from "../../methods/verifycode";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Archive } from "lucide-react";
+import { Archive, Paperclip } from "lucide-react";
 
 const InboxList = (params: {
     emailList: Array<any>,
@@ -59,12 +59,20 @@ const InboxList = (params: {
                             </div>
                             <div className="flex items-center gap-1 overflow-x-hidden">
                                 <Badge variant="outline" className="shrink-0">主题</Badge>
+                                {email.source && email.source !== "maildir" && (
+                                    <Badge variant="secondary" className="shrink-0" title={`来源：${sourceLabel(email.source)}`}>
+                                        {sourceLabel(email.source)}
+                                    </Badge>
+                                )}
                                 {email.blocked === 1 && (
                                     <Badge variant="destructive" className="shrink-0" title={`命中规则：${email.block_rule}`}>
                                         拦截·{blockLabel(email.blocked_by)}
                                     </Badge>
                                 )}
                                 <span className="truncate text-sm">{email.subject?.slice(0, 32)}</span>
+                                {!!email.has_attachments && (
+                                    <Paperclip className="text-muted-foreground size-3.5 shrink-0" aria-label="含附件" />
+                                )}
                             </div>
                             {codes.length > 0 && (
                                 <div className="flex flex-wrap gap-1">

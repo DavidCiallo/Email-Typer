@@ -1,7 +1,10 @@
-import { formatEmail, blockLabel } from "../../methods/format";
+import { useEffect, useState } from "react";
+import { formatEmail, blockLabel, sourceLabel, formatSize } from "../../methods/format";
 import { copytext } from "../../methods/text";
 import { extractCodes } from "../../methods/verifycode";
 import { toast } from "../../methods/notify";
+import { downloadAttachment } from "../../methods/download";
+import { EmailRouter } from "../../api/instance";
 import {
     Dialog,
     DialogContent,
@@ -11,7 +14,7 @@ import {
 } from "../../components/ui/dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { ShieldAlert } from "lucide-react";
+import { Paperclip, ShieldAlert } from "lucide-react";
 
 interface props {
     email: any,
@@ -69,6 +72,56 @@ const InboxContentModal = ({
 }: props) => {
     const isHtml = !!(email.html && String(email.html).trim());
     const bodyHtml = isHtml ? email.html : linkifyText(email.text || "");
+    const [attachments, setAttachments] = useState<any[] | null>(null);
+
+    // The list row only carries counts — fetch full metadata (attachment list) on open
+    useEffect(() => {
+        if (!isOpen || !email?.id) return;
+        setAttachments(null);
+        EmailRouter.detail({ id: email.id }, (data: any) => {
+            const result = data?.data || data;
+            const detail = result?.data || result;
+            setAttachments(Array.isArray(detail?.attachments) ? detail.attachments : []);
+        });
+    }, [isOpen, email?.id]);
+
+    const AttachmentsSection = () => {
+        if (attachments === null) return null;
+        if (attachments.length === 0) return null;
+        return (
+            <div className="mt-3 flex flex-col items-start">
+                <Badge variant="outline">附件 ({attachments.length})</Badge>
+                <div className="border-border mt-2 w-full overflow-hidden rounded-lg border">
+                    {attachments.map((att: any, i: number) => (
+                        <div
+                            key={i}
+                            className="hover:bg-muted/40 flex items-center gap-2 border-border border-b px-3 py-2 last:border-b-0"
+                        >
+                            <Paperclip className="text-muted-foreground size-4 shrink-0" />
+                            <span className="min-w-0 flex-1 truncate text-sm" title={att.filename}>
+                                {att.filename}
+                                {att.inline && <span className="text-muted-foreground ml-1.5 text-xs">（内嵌）</span>}
+                            </span>
+                            <span className="text-muted-foreground shrink-0 text-xs">{formatSize(att.size)}</span>
+                            {att.skipped ? (
+                                <span className="text-destructive shrink-0 text-xs">超过限制未存储</span>
+                            ) : (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    onClick={() => downloadAttachment(email.id, i, att.filename)}
+                                >
+                                    下载
+                                </Button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     const ModalBodyContent = () => {
         return (
             <div className="flex flex-col">
@@ -92,6 +145,12 @@ const InboxContentModal = ({
                             {new Date(Number(email.time)).toLocaleTimeString()?.slice(0, -3)}
                         </span>
                     </div>
+                    {email.source && (
+                        <div className="mt-1 flex items-center gap-1.5 md:mt-0 md:ml-5">
+                            <Badge variant="outline">来源</Badge>
+                            <span className="text-sm">{sourceLabel(email.source)}</span>
+                        </div>
+                    )}
                 </div>
                 <div className="mt-3">
                     <div className="flex items-center gap-1.5">
@@ -105,6 +164,7 @@ const InboxContentModal = ({
                             dangerouslySetInnerHTML={{ __html: bodyHtml }}
                         />
                     </div>
+                    <AttachmentsSection />
                 </div>
             </div>
         )

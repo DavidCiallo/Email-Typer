@@ -1,4 +1,4 @@
-import { formatEmail, blockLabel } from "../../methods/format";
+import { formatEmail, blockLabel, sourceLabel } from "../../methods/format";
 import { extractCodes } from "../../methods/verifycode";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
@@ -12,7 +12,7 @@ import {
 } from "../../components/ui/table";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { Archive } from "lucide-react";
+import { Archive, Paperclip } from "lucide-react";
 
 function formatTime(ts: number): string {
     const d = new Date(ts);
@@ -126,12 +126,20 @@ const InboxTable = (params: {
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex min-w-0 items-center gap-1.5">
+                                        {email.source && email.source !== "maildir" && (
+                                            <Badge variant="secondary" className="shrink-0" title={`来源：${sourceLabel(email.source)}`}>
+                                                {sourceLabel(email.source)}
+                                            </Badge>
+                                        )}
                                         {email.blocked === 1 && (
                                             <Badge variant="destructive" className="shrink-0" title={`命中规则：${email.block_rule}`}>
                                                 拦截·{blockLabel(email.blocked_by)}
                                             </Badge>
                                         )}
                                         <div className="truncate" title={email.subject}>{email.subject}</div>
+                                        {!!email.has_attachments && (
+                                            <Paperclip className="text-muted-foreground size-3.5 shrink-0" aria-label="含附件" />
+                                        )}
                                     </div>
                                     <CodeChips email={email} />
                                 </TableCell>

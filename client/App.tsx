@@ -9,6 +9,7 @@ import SenderPage from './pages/send/SendPage';
 import SafetyPage from './pages/safety/SafetyPage';
 import ThirdpartyPage from './pages/thirdparty/ThirdpartyPage';
 import SettingsPage from './pages/settings/SettingsPage';
+import MailboxPage from './pages/mailbox/MailboxPage';
 import { AdminLayout } from './components/admin/layout';
 import { autoRecordLive } from './methods/status';
 import { connectLive } from './lib/livews';
@@ -51,6 +52,7 @@ const App = () => {
         <Route element={<PrivateRoute />}>
           <Route element={<AdminLayout />}>
             <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/mailbox" element={<MailboxPage />} />
             <Route path="/strategy" element={<StrategyPage />} />
             <Route path="/send" element={<SenderPage />} />
             <Route path="/safety" element={<SafetyPage />} />

@@ -7,6 +7,7 @@ import {
     ShieldCheck,
     Globe,
     Settings,
+    Mailbox,
     type LucideIcon,
 } from "lucide-react"
 
@@ -22,6 +23,7 @@ type NavItem = {
 
 const mainItems: NavItem[] = [
     { title: "邮件列表", href: "/inbox", icon: Inbox },
+    { title: "邮箱管理", href: "/mailbox", icon: Mailbox },
     { title: "邮箱策略", href: "/strategy", icon: Filter },
     { title: "发送邮件", href: "/send", icon: Send },
 ]
