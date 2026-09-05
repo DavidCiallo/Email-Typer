@@ -538,10 +538,10 @@ export function composeRawEmail(opts: ComposeOptions): string {
         body = assembleMultipart(altBoundary, [textPartBody(opts.text!, "plain"), textPartBody(opts.html!, "html")]);
     } else if (hasHtml) {
         bodyType = "text/html; charset=utf-8";
-        body = textPartBody(opts.html!, "html");
+        body = base64Wrap(Buffer.from(opts.html!, "utf-8"));
     } else {
         bodyType = "text/plain; charset=utf-8";
-        body = textPartBody(opts.text || "", "plain");
+        body = base64Wrap(Buffer.from(opts.text || "", "utf-8"));
     }
 
     if (bodyType && !bodyType.startsWith("multipart/")) {
