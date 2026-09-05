@@ -561,3 +561,9 @@ export function stampHeaders(raw: string, extra: Record<string, string>): string
     const lines = Object.entries(extra).map(([k, v]) => `${k}: ${v}`);
     return lines.join("\r\n") + "\r\n" + raw;
 }
+
+/** Buffer-level variant — binary bodies (8bit attachments) never round-trip through strings. */
+export function stampHeadersBuffer(raw: Uint8Array, extra: Record<string, string>): Buffer {
+    const head = Object.entries(extra).map(([k, v]) => `${k}: ${v}\r\n`).join("");
+    return Buffer.concat([Buffer.from(head, "utf-8"), raw]);
+}

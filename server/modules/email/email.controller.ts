@@ -1,4 +1,5 @@
 import path from "path";
+import crypto from "crypto";
 import {
     EmailListRequest,
     EmailDetailRequest,
@@ -115,15 +116,19 @@ async function send(request: EmailSendRequest) {
 }
 
 async function receive(request: EmailReceiveRequest) {
+    // __raw_body lives on the mounted payload — grab it before the typed
+    // request class is rebuilt (it drops undeclared fields)
+    const rawBodyField: string = String((request as any).__raw_body || "");
+
     request = EmailReceiveRequest.self(request);
 
     // Auth via API key — either from request or env
     const req = request as any;
-    const apiKey = req.auth || req.__headers?.["x-api-key"] || "";
+    const apiKey = req.auth || "";
     const expectedKey = process.env.EMAIL_RECEIVE_API_KEY || "";
-    if (!expectedKey || apiKey !== expectedKey) throw "Unauthorized";
+    if (!expectedKey || !timingSafeEq(apiKey, expectedKey)) throw "Unauthorized";
 
-    const raw = req.raw || req.__raw_body || "";
+    const raw = req.raw || rawBodyField || "";
     const email = await EmailService.receiveEmail(raw);
     if (!email) {
         // duplicate delivery — report the already-stored copy idempotently
@@ -135,28 +140,116 @@ async function receive(request: EmailReceiveRequest) {
     return { id: email.id };
 }
 
+// ---------- push API guard rails ----------
+
+const pushHits = new Map<string, number[]>();
+
+/** Per-key sliding-window rate limit — protects the store-first pipeline from a runaway bridge script. */
+function allowPush(key: string): boolean {
+    const limit = Number(process.env.PUSH_RATE_LIMIT_PER_MIN || 120);
+    if (!key || !Number.isFinite(limit) || limit <= 0) return true;
+    const now = Date.now();
+    const hits = (pushHits.get(key) || []).filter(t => now - t < 60_000);
+    if (hits.length >= limit) {
+        pushHits.set(key, hits);
+        return false;
+    }
+    hits.push(now);
+    pushHits.set(key, hits);
+    return true;
+}
+
+function timingSafeEq(a: string, b: string): boolean {
+    const da = crypto.createHash("sha256").update(a).digest();
+    const db = crypto.createHash("sha256").update(b).digest();
+    return crypto.timingSafeEqual(da, db);
+}
+
+async function pushResultIdempotent(stored: any, requestedMessageId?: string) {
+    if (stored) return summarizePush(stored, false);
+    // duplicate (same message_id already ingested) — report idempotently
+    const existing = requestedMessageId
+        ? await EmailService.findByMessageId(requestedMessageId)
+        : null;
+    if (!existing) throw "Failed to ingest pushed email";
+    return summarizePush(existing, true);
+}
+
+function summarizePush(email: any, duplicate: boolean) {
+    const atts = email.attachments || [];
+    const skipped = atts.filter((a: any) => a.skipped);
+    return {
+        id: email.id,
+        message_id: email.message_id || "",
+        duplicate,
+        attachments: {
+            stored: atts.length - skipped.length,
+            skipped: skipped.length,
+            skipped_files: skipped.map((a: any) => a.filename),
+        },
+    };
+}
+
 /**
- * Push a structured email through a mailbox's API key.
- * The message is composed into a valid RFC 5322 mail, archived into the
- * maildir (tmp → new rename) and then ingested through the shared pipeline.
+ * Push an email through a mailbox's API key. Two body styles:
+ * 1. structured JSON — {from?, subject, html/text, attachments?} — the server
+ *    composes a valid RFC 5322 mail;
+ * 2. raw MIME passthrough — Content-Type: message/rfc822 body, or a `raw` /
+ *    `raw_base64` JSON field — for bridge scripts that already hold the full
+ *    message (IMAP fetch, browser capture).
+ * Both are archived into the maildir (tmp → new rename) and ingested through
+ * the shared pipeline; the response reports dedup and attachment outcomes so
+ * scripts can self-check.
  */
 async function push(request: EmailPushRequest) {
+    // mounted payload carries __headers/__raw_body — read them BEFORE the
+    // typed request class is rebuilt (it drops undeclared fields)
+    const mounted = request as any;
+    const headers: Record<string, string> = mounted.__headers || {};
+    const rawBodyField: string = String(mounted.__raw_body || "");
+    const contentType = String(headers["content-type"] || "").toLowerCase();
+
     request = EmailPushRequest.self(request);
-    const req = request as any;
-    const apiKey = req.__headers?.["x-api-key"] || req.auth || "";
+    const apiKey = headers["x-api-key"] || request.auth || "";
+    if (!allowPush(apiKey)) throw "推送频率超限（每分钟上限），请稍后再试";
 
     let to = (request.to || "").trim();
     let mailbox = await MailboxService.findByApiKey(apiKey);
+    let mailboxId = "";
     if (mailbox) {
         // the mailbox owns the address — ignore any client-supplied `to`
         to = mailbox.address;
+        mailboxId = mailbox.id;
     } else {
         const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
-        if (!masterKey || apiKey !== masterKey) throw "Unauthorized";
+        if (!masterKey || !timingSafeEq(apiKey, masterKey)) throw "Unauthorized";
         if (!to) throw "Missing `to` address";
-        mailbox = null;
     }
 
+    const folder = `_api_${(to.split("@")[1] || "local").toLowerCase()}`;
+    const ingestOptions = { source: "api", mailboxId, folder };
+
+    // --- raw MIME passthrough ---
+    const rawField = typeof request.raw === "string" ? request.raw : "";
+    const rawB64Field = typeof request.raw_base64 === "string" ? request.raw_base64 : "";
+    if (contentType.includes("message/rfc822") || rawField || rawB64Field) {
+        let rawBuf: Uint8Array;
+        if (rawB64Field) {
+            rawBuf = Buffer.from(rawB64Field.replace(/\s/g, ""), "base64");
+        } else if (rawField) {
+            rawBuf = Buffer.from(rawField, "utf-8");
+        } else {
+            rawBuf = Buffer.from(rawBodyField, "utf-8");
+        }
+        if (rawBuf.length === 0) throw "Empty raw email";
+        // the Message-ID lives inside the mail — needed for idempotent dedup
+        const inlineMessageId = request.message_id
+            || (parseRawEmail(rawBuf)?.message_id ?? "");
+        const stored = await EmailService.ingestRaw(rawBuf, ingestOptions);
+        return await pushResultIdempotent(stored, inlineMessageId);
+    }
+
+    // --- structured JSON ---
     const subject = request.subject || "";
     const html = request.html || "";
     const text = request.text || "";
@@ -176,27 +269,11 @@ async function push(request: EmailPushRequest) {
         html: html || undefined,
         text: text || undefined,
         attachments: attachments.length ? attachments : undefined,
-        headers: {
-            "X-CFRS-Source": "api",
-            ...(mailbox ? { "X-CFRS-Mailbox": mailbox.id } : {}),
-        },
         messageId: request.message_id,
     });
 
-    const stored = await EmailService.ingestRaw(raw, {
-        source: "api",
-        mailboxId: mailbox?.id,
-        // archive under a synthetic folder — API mail must not create domain
-        // folders that would pollute the receiving-domain discovery
-        folder: `_api_${(to.split("@")[1] || "local").toLowerCase()}`,
-    });
-    if (!stored) {
-        // duplicate (same message_id already ingested) — report it idempotently
-        const existing = request.message_id ? await EmailService.findByMessageId(request.message_id) : null;
-        if (!existing) throw "Failed to ingest pushed email";
-        return { id: existing.id, message_id: existing.message_id };
-    }
-    return { id: stored.id, message_id: stored.message_id };
+    const stored = await EmailService.ingestRaw(raw, ingestOptions);
+    return await pushResultIdempotent(stored, request.message_id);
 }
 
 /**

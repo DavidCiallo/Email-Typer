@@ -3,7 +3,7 @@ import { EmailEntity, AttachmentMeta } from "../../../shared/modules/email/email
 import { SettingsService } from "../settings/settings.service";
 import { SafetyService } from "../safety/safety.service";
 import { broadcastWsMessage } from "../../lib/mount";
-import { parseRawEmail, stampHeaders } from "../../lib/mime";
+import { parseRawEmail, stampHeadersBuffer } from "../../lib/mime";
 import { deliverToMaildir } from "../../lib/maildir";
 import { nanoid } from "nanoid";
 import chokidar from "chokidar";
@@ -296,14 +296,22 @@ export class EmailService {
      * (file is the source of truth — re-scans keep working, attachments stay
      * re-extractable), then run the shared file ingest. The watcher may pick up
      * the same file afterwards; dedup makes that pass a no-op.
+     * Source metadata is stamped into the archived file so re-scans reproduce
+     * the provenance.
      */
-    static async ingestRaw(raw: string, options?: { source?: string; mailboxId?: string; folder?: string }): Promise<EmailEntity | null> {
-        let stamped = raw;
+    static async ingestRaw(raw: string | Uint8Array, options?: {
+        source?: string;
+        mailboxId?: string;
+        folder?: string;
+        /** extra headers stamped into the archived file (override source/mailbox) */
+        headers?: Record<string, string>;
+    }): Promise<EmailEntity | null> {
         const extra: Record<string, string> = {};
         if (options?.source) extra["X-CFRS-Source"] = options.source;
         if (options?.mailboxId) extra["X-CFRS-Mailbox"] = options.mailboxId;
-        if (Object.keys(extra).length) stamped = stampHeaders(raw, extra);
+        Object.assign(extra, options?.headers || {});
 
+        const stamped = stampHeadersBuffer(typeof raw === "string" ? Buffer.from(raw, "utf-8") : raw, extra);
         const folder = options?.folder || "_receive";
         const filePath = deliverToMaildir(maildirRoot(), folder, stamped);
         return await EmailService.ingestFile(filePath);

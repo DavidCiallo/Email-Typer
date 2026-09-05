@@ -2,8 +2,7 @@ import Repository from "../../lib/repository";
 import { MailboxEntity } from "../../../shared/modules/mailbox/mailbox.entity";
 import { MailboxService } from "./mailbox.service";
 import { ImapClient } from "../../lib/imap-client";
-import { deliverToMaildir } from "../../lib/maildir";
-import { maildirRoot, EmailService } from "../email/email.service";
+import { EmailService } from "../email/email.service";
 import { SettingsService } from "../settings/settings.service";
 import { resolveProvider } from "./imap.providers";
 
@@ -12,12 +11,6 @@ const mailboxRepository: Repository<MailboxEntity> = Repository.instance("Mailbo
 const DEFAULT_INTERVAL = 60;       // seconds between polls
 const MIN_INTERVAL = 15;
 const FIRST_SYNC_LIMIT = 200;      // cap the initial backlog pull
-
-/** Prepend header lines without a Buffer→string roundtrip (8bit bodies stay intact). */
-function stampBuffer(raw: Uint8Array, extra: Record<string, string>): Buffer {
-    const head = Object.entries(extra).map(([k, v]) => `${k}: ${v}\r\n`).join("");
-    return Buffer.concat([Buffer.from(head, "utf-8"), raw]);
-}
 
 async function patchBox(id: string, patch: Partial<MailboxEntity>): Promise<void> {
     await mailboxRepository.atomicPatch({ id } as any, () => patch as any);
@@ -140,12 +133,11 @@ export class MailboxSyncWorker {
             let imported = 0;
             for (const uid of uids) {
                 const { raw } = await client.uidFetch(uid);
-                const stamped = stampBuffer(raw, {
-                    "X-CFRS-Source": "imap",
-                    "X-CFRS-Mailbox": box.id,
+                const stored = await EmailService.ingestRaw(raw, {
+                    source: "imap",
+                    mailboxId: box.id,
+                    folder: `_sync_${box.id}`,
                 });
-                const filePath = deliverToMaildir(maildirRoot(), `_sync_${box.id}`, stamped);
-                const stored = await EmailService.ingestFile(filePath);
                 if (stored) imported++;
                 await patchBox(box.id, { last_uid: uid });
             }

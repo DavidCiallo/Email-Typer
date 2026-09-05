@@ -159,10 +159,17 @@ const MailboxPage = () => {
     }
 
     const curlExample = keyRow
-        ? `curl -X POST ${location.origin}/api/email/push \\
+        ? `# 结构化推送（服务端代为合成邮件）
+curl -X POST ${location.origin}/api/email/push \\
   -H "x-api-key: ${keyRow.api_key}" \\
   -H "Content-Type: application/json" \\
-  -d '{"subject": "你好", "html": "<b>hello</b>"}'`
+  -d '{"subject": "你好", "html": "<b>hello</b>"}'
+
+# 原始邮件透传（脚本已持有完整 .eml / RFC822 时）
+curl -X POST ${location.origin}/api/email/push \\
+  -H "x-api-key: ${keyRow.api_key}" \\
+  -H "Content-Type: message/rfc822" \\
+  --data-binary @mail.eml`
         : "";
 
     return (
@@ -370,7 +377,7 @@ const MailboxPage = () => {
                         </div>
                         <div>
                             <p className="text-muted-foreground mb-1 text-xs font-medium">调用示例</p>
-                            <pre className="bg-muted max-h-40 overflow-auto rounded-md p-3 font-mono text-xs whitespace-pre-wrap">
+                            <pre className="bg-muted max-h-48 overflow-auto rounded-md p-3 font-mono text-xs whitespace-pre-wrap">
                                 {curlExample}
                             </pre>
                             <Button
@@ -385,6 +392,9 @@ const MailboxPage = () => {
                                 复制示例
                             </Button>
                         </div>
+                        <p className="text-muted-foreground text-xs">
+                            推送支持附件（attachments 数组，base64）；带 message_id 可实现幂等重试；响应中会返回是否重复投递以及附件入库结果。
+                        </p>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" className="text-destructive hover:text-destructive" onClick={regenerateKey}>

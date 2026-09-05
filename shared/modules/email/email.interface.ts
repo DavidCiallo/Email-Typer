@@ -240,6 +240,11 @@ export class EmailPushRequest implements BaseRequest {
     public text?: string;
     public attachments?: EmailPushAttachment[];
     public message_id?: string;
+    // Raw MIME passthrough — for bridge scripts that already hold a full
+    // RFC 822 message. Either a complete message/rfc822 request body
+    // (Content-Type: message/rfc822) or one of these fields.
+    public raw?: string;
+    public raw_base64?: string;
 
     constructor(origin: Partial<EmailPushRequest>) {
         origin.auth && (this.auth = origin.auth);
@@ -250,16 +255,24 @@ export class EmailPushRequest implements BaseRequest {
         this.text = origin.text;
         this.attachments = origin.attachments;
         this.message_id = origin.message_id;
+        this.raw = origin.raw;
+        this.raw_base64 = origin.raw_base64;
     }
     static self(unsafe: any) {
         return new EmailPushRequest(unsafe);
     }
 }
 
-export class EmailPushResponse implements BaseResponse<{ id: string; message_id: string }> {
+export interface EmailPushAttachmentResult {
+    stored: number;
+    skipped: number;
+    skipped_files: string[];
+}
+
+export class EmailPushResponse implements BaseResponse<{ id: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult }> {
     public success: boolean;
     public message: string;
-    public data?: { id: string; message_id: string };
+    public data?: { id: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult };
 
     constructor(origin: EmailPushResponse) {
         this.success = origin.success;

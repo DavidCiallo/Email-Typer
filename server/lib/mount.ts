@@ -10,6 +10,20 @@ export async function mounthttp(req: Request, mounts: RouteMount[]): Promise<Res
     const pathName = url.pathname;
     const method = req.method.toLowerCase();
 
+    // CORS preflight — must short-circuit before route dispatch (routes are
+    // matched by path only, so OPTIONS would otherwise hit business handlers)
+    if (method === "options") {
+        return new Response(null, {
+            status: 204,
+            headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, token, Authorization, x-api-key",
+                "Access-Control-Max-Age": "86400",
+            },
+        });
+    }
+
     for (const mount of mounts) {
         const { routes, handlers } = mount;
         for (const [key, val] of Object.entries(routes)) {
@@ -98,16 +112,6 @@ export async function mounthttp(req: Request, mounts: RouteMount[]): Promise<Res
                 });
             }
         }
-    }
-
-    if (method === "options") {
-        return new Response(null, {
-            headers: {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, token, Authorization, x-api-key",
-            },
-        });
     }
 
     return null;
