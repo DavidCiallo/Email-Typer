@@ -79,10 +79,14 @@ export class MailboxService {
     }, id?: string): Promise<MailboxEntity> {
         const [localPart, domain] = body.address.split("@");
 
-        if (body.type === "catchall" || body.type === "api") {
+        // Only catchall addresses must live on a domain the system receives
+        // mail for. API mailboxes are HTTP-push namespaces (any domain works,
+        // e.g. pushing a yeah.net mailbox in), and IMAP addresses belong to
+        // external providers.
+        if (body.type === "catchall") {
             const allowed = await MailboxService.allowedDomains();
             if (allowed.length && !allowed.includes(domain.toLowerCase())) {
-                throw `域名不在允许列表内，仅支持: ${allowed.join(", ")}`;
+                throw `域名不在接收列表内，仅支持: ${allowed.join(", ")}`;
             }
         }
 

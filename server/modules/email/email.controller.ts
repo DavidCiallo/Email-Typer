@@ -186,7 +186,9 @@ async function push(request: EmailPushRequest) {
     const stored = await EmailService.ingestRaw(raw, {
         source: "api",
         mailboxId: mailbox?.id,
-        folder: to.split("@")[1] || "_api",
+        // archive under a synthetic folder — API mail must not create domain
+        // folders that would pollute the receiving-domain discovery
+        folder: `_api_${(to.split("@")[1] || "local").toLowerCase()}`,
     });
     if (!stored) {
         // duplicate (same message_id already ingested) — report it idempotently

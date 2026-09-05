@@ -105,7 +105,7 @@ const MailboxFormModal = (params: {
     }
 
     function buildAddress(): string {
-        if (formType === "imap") return formAddress.trim().toLowerCase();
+        if (formType !== "catchall") return formAddress.trim().toLowerCase();
         return `${formLocal.trim().toLowerCase()}@${(formDomain || "").trim().toLowerCase()}`;
     }
 
@@ -133,6 +133,10 @@ const MailboxFormModal = (params: {
             if (!/^([^\s@]+)@([^\s@]+)$/.test(formAddress.trim())) return "请填写完整的外部邮箱地址";
             if (!formHost.trim()) return "请填写 IMAP 服务器地址";
             if (!editing && !formPassword) return "请填写授权码";
+            return null;
+        }
+        if (formType === "api") {
+            if (!/^([^\s@]+)@([^\s@]+)$/.test(formAddress.trim())) return "请填写完整的推送地址（任意域名均可，如 ci@yeah.net）";
             return null;
         }
         if (!formLocal.trim()) return "请填写地址名称";
@@ -208,7 +212,7 @@ const MailboxFormModal = (params: {
                         </Select>
                         <p className="text-muted-foreground text-xs">
                             {formType === "catchall" && "本地域名下的一个地址，邮件即来即收，可提前占位绑定备注。"}
-                            {formType === "api" && "创建后获得独立 API Key，外部系统凭 Key 推送结构化邮件到该地址。"}
+                            {formType === "api" && "创建后获得独立 API Key，外部系统凭 Key 推送结构化邮件到该地址；地址可为任意外部域名（如 yeah.net）。"}
                             {formType === "imap" && "通过 IMAP 授权码定时同步外部邮箱（网易 / QQ 等）的收件箱。"}
                         </p>
                     </div>
@@ -272,7 +276,19 @@ const MailboxFormModal = (params: {
                                 </div>
                             </details>
                         </>
-                    ) : (
+                    ) : formType === "api" ? (
+                        <div className="flex flex-col gap-2">
+                            <Label>推送地址</Label>
+                            <Input
+                                placeholder="ci@yeah.net"
+                                value={formAddress}
+                                onChange={(e) => setFormAddress(e.target.value)}
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                任意域名均可（如你的 yeah.net 邮箱）——该地址只是推送命名空间，系统无需对此域有接收能力；创建后用 API Key 调 /api/email/push 即可投递。
+                            </p>
+                        </div>
+                    ) : formType === "catchall" ? (
                         <div className="flex flex-col gap-2">
                             <Label>地址</Label>
                             <div className="flex gap-2">
@@ -301,7 +317,7 @@ const MailboxFormModal = (params: {
                                 只能选择系统实际接收邮件的域名（allowed_domains 设置 + maildir 收信目录）；任意名称都可以，收到第一封邮件前即可提前占位。
                             </p>
                         </div>
-                    )}
+                    ) : null}
 
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="mb-name">显示名称（可选）</Label>
