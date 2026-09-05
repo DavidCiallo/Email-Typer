@@ -329,9 +329,9 @@ const MailboxFormModal = (params: {
                         <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
                             <div className="min-w-0">
                                 <Label htmlFor="mb-forward">参与策略转发</Label>
-                                <p className="text-muted-foreground mt-0.5 text-xs">
-                                    默认关闭：推进来 / 同步来的邮件只在系统内留存，不会命中转发策略外发（避免私人信件意外经 Resend 转出）。开启后与本地邮件同样参与策略匹配。
-                                </p>
+                                    <p className="text-muted-foreground mt-0.5 text-xs">
+                                        默认导入邮件仅留存不外发；开启后才会命中策略转发。
+                                    </p>
                             </div>
                             <Switch id="mb-forward" checked={formForward} onCheckedChange={setFormForward} />
                         </div>
