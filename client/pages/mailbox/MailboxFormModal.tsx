@@ -57,6 +57,7 @@ const MailboxFormModal = (params: {
     const [formTls, setFormTls] = useState(true);
     const [formInterval, setFormInterval] = useState(0);
     const [formNote, setFormNote] = useState("");
+    const [formForward, setFormForward] = useState(false);
     const [testing, setTesting] = useState(false);
 
     const preset = providers.find((p) => p.key === formProvider);
@@ -78,6 +79,7 @@ const MailboxFormModal = (params: {
             setFormTls(editing.imap_tls !== 0);
             setFormInterval(editing.sync_interval || 0);
             setFormNote(editing.note || "");
+            setFormForward(editing.forward_enabled === 1);
         } else {
             setFormType("catchall");
             setFormName("");
@@ -91,6 +93,7 @@ const MailboxFormModal = (params: {
             setFormTls(true);
             setFormInterval(0);
             setFormNote("");
+            setFormForward(false);
         }
     }, [isOpen, editing]);
 
@@ -124,6 +127,9 @@ const MailboxFormModal = (params: {
             mailbox.imap_tls = formTls ? 1 : 0;
             mailbox.sync_interval = Number(formInterval) || 0;
             if (formPassword) mailbox.password = formPassword;
+        }
+        if (formType !== "catchall") {
+            mailbox.forward_enabled = formForward ? 1 : 0;
         }
         return mailbox;
     }
@@ -318,6 +324,18 @@ const MailboxFormModal = (params: {
                             </p>
                         </div>
                     ) : null}
+
+                    {formType !== "catchall" && (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                            <div className="min-w-0">
+                                <Label htmlFor="mb-forward">参与策略转发</Label>
+                                <p className="text-muted-foreground mt-0.5 text-xs">
+                                    默认关闭：推进来 / 同步来的邮件只在系统内留存，不会命中转发策略外发（避免私人信件意外经 Resend 转出）。开启后与本地邮件同样参与策略匹配。
+                                </p>
+                            </div>
+                            <Switch id="mb-forward" checked={formForward} onCheckedChange={setFormForward} />
+                        </div>
+                    )}
 
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="mb-name">显示名称（可选）</Label>

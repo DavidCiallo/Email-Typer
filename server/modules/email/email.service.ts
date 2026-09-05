@@ -1,5 +1,6 @@
 import Repository, { getDataDir } from "../../lib/repository";
 import { EmailEntity, AttachmentMeta } from "../../../shared/modules/email/email.entity";
+import { MailboxEntity } from "../../../shared/modules/mailbox/mailbox.entity";
 import { SettingsService } from "../settings/settings.service";
 import { SafetyService } from "../safety/safety.service";
 import { broadcastWsMessage } from "../../lib/mount";
@@ -11,6 +12,7 @@ import path from "path";
 import fs from "fs";
 
 const emailRepository: Repository<EmailEntity> = Repository.instance("Email");
+const mailboxRepository: Repository<MailboxEntity> = Repository.instance("Mailbox");
 const RESEND_API_URL = "https://api.resend.com/emails";
 
 const DEFAULT_ATTACHMENT_LIMIT = 10 * 1024 * 1024; // 10MB per attachment
@@ -167,13 +169,28 @@ export class EmailService {
      * forward only clean mail, then broadcast to dashboard clients.
      */
     private static async finalizeIngest(stored: EmailEntity, blocked: boolean): Promise<void> {
-        if (!blocked) {
+        if (!blocked && await EmailService.shouldForward(stored)) {
             const { StrategyService } = await import("../strategy/strategy.service");
             StrategyService.matchAndForward(stored).catch(e => {
                 console.error("[EmailService] Strategy forward failed:", e);
             });
         }
         notifyNewEmail(stored);
+    }
+
+    /**
+     * Forwarding policy: mail that arrived on our own domains (maildir /
+     * receive) is always eligible; imported mail (api / imap) only when its
+     * mailbox opted in via forward_enabled — private mail pushed in from an
+     * external provider must not leak out through Resend by accident.
+     */
+    private static async shouldForward(stored: EmailEntity): Promise<boolean> {
+        if (stored.source === "api" || stored.source === "imap") {
+            if (!stored.mailbox_id) return false;
+            const box = await mailboxRepository.findOne({ id: stored.mailbox_id } as any);
+            return !!box && box.forward_enabled === 1;
+        }
+        return true;
     }
 
     /**

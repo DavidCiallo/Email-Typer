@@ -20,6 +20,7 @@ export interface MailboxEntity extends BaseEntity {
     credential: string;      // aes(JSON {user, password}) — imap only, never returned to the client
     api_key: string;         // push auth key — api only ("mk_...")
     status: string;          // "active" | "disabled" | "error"
+    forward_enabled: number; // 1 = imported mail (api/imap) also matches forward strategies; 0 = store only
     sync_error: string;      // last sync failure message
     last_sync_time: number | null;
     last_uid: number;        // highest IMAP UID already imported

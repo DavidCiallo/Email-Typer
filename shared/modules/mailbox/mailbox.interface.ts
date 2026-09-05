@@ -5,7 +5,7 @@ export type MailboxDTO = Pick<
     MailboxEntity,
     | "id" | "name" | "type" | "address" | "domain" | "local_part"
     | "provider" | "imap_host" | "imap_port" | "imap_tls" | "sync_interval"
-    | "api_key" | "status" | "sync_error" | "last_sync_time" | "note"
+    | "api_key" | "status" | "forward_enabled" | "sync_error" | "last_sync_time" | "note"
 > & {
     has_credential: boolean;
 };
@@ -49,6 +49,7 @@ export class MailboxSaveBody {
     public sync_interval: number;
     public password: string;   // plaintext auth code, write-only
     public note: string;
+    public forward_enabled: number; // api/imap only: 1 = imported mail also matches forward strategies
 
     constructor(origin: any) {
         if (!origin.type) throw new Error("Mailbox type is required");
@@ -64,6 +65,7 @@ export class MailboxSaveBody {
         this.sync_interval = Number(origin.sync_interval) || 0;
         this.password = origin.password || "";
         this.note = origin.note || "";
+        this.forward_enabled = origin.forward_enabled ? 1 : 0;
     }
     static self(unsafe: any) {
         return new MailboxSaveBody(unsafe);

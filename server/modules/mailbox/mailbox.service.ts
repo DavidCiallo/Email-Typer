@@ -61,6 +61,7 @@ export class MailboxService {
             sync_interval: e.sync_interval,
             api_key: e.type === "api" ? e.api_key : "",
             status: e.status || "active",
+            forward_enabled: e.forward_enabled ?? (e.type === "catchall" ? 1 : 0),
             sync_error: e.sync_error || "",
             last_sync_time: e.last_sync_time ?? null,
             note: e.note || "",
@@ -75,7 +76,7 @@ export class MailboxService {
     static async save(body: {
         name: string; type: string; address: string; provider: string;
         imap_host: string; imap_port: number; imap_tls: number; sync_interval: number;
-        password: string; note: string;
+        password: string; note: string; forward_enabled: number;
     }, id?: string): Promise<MailboxEntity> {
         const [localPart, domain] = body.address.split("@");
 
@@ -90,6 +91,12 @@ export class MailboxService {
             }
         }
 
+        // one mailbox per address — a push key must resolve to exactly one mailbox
+        const dupe = await mailboxRepository.findFirst({ address: body.address } as any);
+        if (dupe && dupe.id !== id) {
+            throw `地址已被其他邮箱占用: ${body.address}`;
+        }
+
         const patch: Partial<MailboxEntity> = {
             name: body.name || body.address,
             type: body.type,
@@ -98,6 +105,9 @@ export class MailboxService {
             local_part: localPart,
             provider: body.type === "imap" ? body.provider : "",
             note: body.note || "",
+            // forwarding opt-in only applies to imported sources; catchall
+            // mail always remains forward-eligible
+            forward_enabled: body.type === "catchall" ? 1 : (body.forward_enabled ? 1 : 0),
         };
 
         if (body.type === "imap") {
