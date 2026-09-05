@@ -269,10 +269,10 @@ export interface EmailPushAttachmentResult {
     skipped_files: string[];
 }
 
-export class EmailPushResponse implements BaseResponse<{ id: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult }> {
+export class EmailPushResponse implements BaseResponse<{ id: string; to: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult }> {
     public success: boolean;
     public message: string;
-    public data?: { id: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult };
+    public data?: { id: string; to: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult };
 
     constructor(origin: EmailPushResponse) {
         this.success = origin.success;

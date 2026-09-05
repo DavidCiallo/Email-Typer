@@ -165,21 +165,22 @@ function timingSafeEq(a: string, b: string): boolean {
     return crypto.timingSafeEqual(da, db);
 }
 
-async function pushResultIdempotent(stored: any, requestedMessageId?: string) {
-    if (stored) return summarizePush(stored, false);
+async function pushResultIdempotent(stored: any, to: string, requestedMessageId?: string) {
+    if (stored) return summarizePush(stored, false, to);
     // duplicate (same message_id already ingested) — report idempotently
     const existing = requestedMessageId
         ? await EmailService.findByMessageId(requestedMessageId)
         : null;
     if (!existing) throw "Failed to ingest pushed email";
-    return summarizePush(existing, true);
+    return summarizePush(existing, true, to);
 }
 
-function summarizePush(email: any, duplicate: boolean) {
+function summarizePush(email: any, duplicate: boolean, to: string) {
     const atts = email.attachments || [];
     const skipped = atts.filter((a: any) => a.skipped);
     return {
         id: email.id,
+        to,
         message_id: email.message_id || "",
         duplicate,
         attachments: {
@@ -217,7 +218,11 @@ async function push(request: EmailPushRequest) {
     let mailbox = await MailboxService.findByApiKey(apiKey);
     let mailboxId = "";
     if (mailbox) {
-        // the mailbox owns the address — ignore any client-supplied `to`
+        // the mailbox owns the address — a mismatched `to` is a script
+        // misconfiguration, fail loudly instead of silently redirecting
+        if (to && to.toLowerCase() !== mailbox.address) {
+            throw `\`to\` (${to}) 与该邮箱地址 (${mailbox.address}) 不符；API Key 已绑定收件地址，可省略 \`to\``;
+        }
         to = mailbox.address;
         mailboxId = mailbox.id;
     } else {
@@ -246,7 +251,7 @@ async function push(request: EmailPushRequest) {
         const inlineMessageId = request.message_id
             || (parseRawEmail(rawBuf)?.message_id ?? "");
         const stored = await EmailService.ingestRaw(rawBuf, ingestOptions);
-        return await pushResultIdempotent(stored, inlineMessageId);
+        return await pushResultIdempotent(stored, to, inlineMessageId);
     }
 
     // --- structured JSON ---
@@ -273,7 +278,7 @@ async function push(request: EmailPushRequest) {
     });
 
     const stored = await EmailService.ingestRaw(raw, ingestOptions);
-    return await pushResultIdempotent(stored, request.message_id);
+    return await pushResultIdempotent(stored, to, request.message_id);
 }
 
 /**
