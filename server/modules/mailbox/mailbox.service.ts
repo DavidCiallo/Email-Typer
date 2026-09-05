@@ -2,10 +2,12 @@ import Repository from "../../lib/repository";
 import { MailboxEntity } from "../../../shared/modules/mailbox/mailbox.entity";
 import { MailboxDTO, DerivedAddress } from "../../../shared/modules/mailbox/mailbox.interface";
 import { SettingsService } from "../settings/settings.service";
-import { EmailService } from "../email/email.service";
+import { EmailService, maildirRoot } from "../email/email.service";
 import { aesEncrypt, aesDecrypt } from "../../lib/crypto";
 import { IMAP_PROVIDERS, resolveProvider } from "./imap.providers";
 import { nanoid } from "nanoid";
+import path from "path";
+import fs from "fs";
 
 const mailboxRepository: Repository<MailboxEntity> = Repository.instance("Mailbox");
 
@@ -23,10 +25,25 @@ export class MailboxService {
         return await mailboxRepository.findOne({ api_key: key } as any);
     }
 
-    /** Local domains a catchall/api mailbox may bind to. */
-    static allowedDomains(): string[] {
-        const raw = SettingsService.get("allowed_from_domains") || SettingsService.get("allowed_domains") || "";
-        return raw.split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+    /**
+     * Domains a catchall/api mailbox may bind to — i.e. domains this system
+     * can actually receive mail for. Union of the allowed_domains setting and
+     * the domain folders Postfix is delivering into (maildir directories that
+     * contain a new/ folder). Synthetic folders (_receive, _sync_*) are ignored.
+     */
+    static async allowedDomains(): Promise<string[]> {
+        const configured = (SettingsService.get("allowed_domains") || "")
+            .split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+        try {
+            const root = maildirRoot();
+            const discovered = fs.readdirSync(root, { withFileTypes: true })
+                .filter(d => d.isDirectory() && !d.name.startsWith("_") && !d.name.startsWith("."))
+                .filter(d => fs.existsSync(path.join(root, d.name, "new")))
+                .map(d => d.name.toLowerCase());
+            return Array.from(new Set([...configured, ...discovered])).sort();
+        } catch {
+            return configured;
+        }
     }
 
     static toDTO(e: MailboxEntity): MailboxDTO {
@@ -63,7 +80,7 @@ export class MailboxService {
         const [localPart, domain] = body.address.split("@");
 
         if (body.type === "catchall" || body.type === "api") {
-            const allowed = MailboxService.allowedDomains();
+            const allowed = await MailboxService.allowedDomains();
             if (allowed.length && !allowed.includes(domain.toLowerCase())) {
                 throw `域名不在允许列表内，仅支持: ${allowed.join(", ")}`;
             }

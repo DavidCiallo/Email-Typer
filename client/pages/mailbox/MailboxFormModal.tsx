@@ -295,8 +295,11 @@ const MailboxFormModal = (params: {
                                 </Select>
                             </div>
                             {domains.length === 0 && (
-                                <p className="text-destructive text-xs">尚未配置允许的域名，请在系统设置中添加 allowed_domains。</p>
+                                <p className="text-destructive text-xs">尚未发现可接收的域名：请在系统设置里配置 allowed_domains，或确认 maildir 中已有对应域名的收信目录。</p>
                             )}
+                            <p className="text-muted-foreground text-xs">
+                                只能选择系统实际接收邮件的域名（allowed_domains 设置 + maildir 收信目录）；任意名称都可以，收到第一封邮件前即可提前占位。
+                            </p>
                         </div>
                     )}
 

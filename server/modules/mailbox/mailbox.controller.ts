@@ -23,7 +23,7 @@ async function list(request: MailboxListRequest) {
     const rows = await MailboxService.findList(where);
     return {
         list: rows.map(MailboxService.toDTO),
-        domains: MailboxService.allowedDomains(),
+        domains: await MailboxService.allowedDomains(),
     };
 }
 
