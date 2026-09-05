@@ -291,7 +291,7 @@ const MailboxFormModal = (params: {
                                 onChange={(e) => setFormAddress(e.target.value)}
                             />
                             <p className="text-muted-foreground text-xs">
-                                任意域名均可（如你的 yeah.net 邮箱）——该地址只是推送命名空间，系统无需对此域有接收能力；创建后用 API Key 调 /api/email/push 即可投递。
+                                任意域名均可，该地址仅作推送命名空间。
                             </p>
                         </div>
                     ) : formType === "catchall" ? (
@@ -320,7 +320,7 @@ const MailboxFormModal = (params: {
                                 <p className="text-destructive text-xs">尚未发现可接收的域名：请在系统设置里配置 allowed_domains，或确认 maildir 中已有对应域名的收信目录。</p>
                             )}
                             <p className="text-muted-foreground text-xs">
-                                只能选择系统实际接收邮件的域名（allowed_domains 设置 + maildir 收信目录）；任意名称都可以，收到第一封邮件前即可提前占位。
+                                仅可选系统实际接收的域名，名称任意。
                             </p>
                         </div>
                     ) : null}
