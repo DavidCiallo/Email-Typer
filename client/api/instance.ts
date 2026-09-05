@@ -6,6 +6,7 @@ import { safetyRoutes } from "../../shared/modules/safety/safety.router";
 import { thirdpartyRoutes } from "../../shared/modules/thirdparty/thirdparty.router";
 import { settingsRoutes } from "../../shared/modules/settings/settings.router";
 import { accountRoutes } from "../../shared/modules/account/account.router";
+import { mailboxRoutes } from "../../shared/modules/mailbox/mailbox.router";
 
 type RouteDef = { path: string; request: any; response: any };
 
@@ -15,7 +16,7 @@ function buildApiClient(routes: Record<string, RouteDef>, http: HttpClientServic
     for (const [name, route] of Object.entries(routes)) {
         if (name === "base" || name === "prefix") continue;
 
-        const url = routes.base + routes.prefix + (route as RouteDef).path;
+        const url = (routes as any).base + (routes as any).prefix + (route as RouteDef).path;
 
         // All routes use POST as the method (body-based requests)
         client[name] = async (body: Record<string, any>, callback?: Function) => {
@@ -41,3 +42,4 @@ export const SafetyRouter = buildApiClient(safetyRoutes as any, http);
 export const ThirdpartyRouter = buildApiClient(thirdpartyRoutes as any, http);
 export const SettingsRouter = buildApiClient(settingsRoutes as any, http);
 export const AccountRouter = buildApiClient(accountRoutes as any, http);
+export const MailboxRouter = buildApiClient(mailboxRoutes as any, http);

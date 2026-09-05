@@ -12,6 +12,8 @@ const SETTING_KEYS: Record<string, string> = {
     "allowed_domains": "ALLOWED_DOMAINS",
     "allowed_from_domains": "ALLOWED_FROM_DOMAINS",
     "client_url": "CLIENT_URL",
+    "mailbox_sync_interval": "MAILBOX_SYNC_INTERVAL",
+    "attachment_max_size": "ATTACHMENT_MAX_SIZE",
 };
 
 export class SettingsService {

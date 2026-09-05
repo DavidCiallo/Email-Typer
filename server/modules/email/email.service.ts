@@ -1,23 +1,41 @@
-import Repository from "../../lib/repository";
-import { EmailEntity } from "../../../shared/modules/email/email.entity";
+import Repository, { getDataDir } from "../../lib/repository";
+import { EmailEntity, AttachmentMeta } from "../../../shared/modules/email/email.entity";
+import { MailboxEntity } from "../../../shared/modules/mailbox/mailbox.entity";
 import { SettingsService } from "../settings/settings.service";
 import { SafetyService } from "../safety/safety.service";
+import { broadcastWsMessage } from "../../lib/mount";
+import { parseRawEmail, stampHeadersBuffer } from "../../lib/mime";
+import { deliverToMaildir } from "../../lib/maildir";
 import { nanoid } from "nanoid";
 import chokidar from "chokidar";
 import path from "path";
 import fs from "fs";
 
 const emailRepository: Repository<EmailEntity> = Repository.instance("Email");
+const mailboxRepository: Repository<MailboxEntity> = Repository.instance("Mailbox");
 const RESEND_API_URL = "https://api.resend.com/emails";
+
+const DEFAULT_ATTACHMENT_LIMIT = 10 * 1024 * 1024; // 10MB per attachment
+
+export function maildirRoot(): string {
+    return process.env.MAILDIR_PATH || "./eml";
+}
+
+function attachmentLimit(): number {
+    const raw = Number(SettingsService.get("attachment_max_size"));
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ATTACHMENT_LIMIT;
+}
 
 interface SendEmailParams {
     from: string;
     to: string;
     subject: string;
     html: string;
+    /** optional Reply-To header — used by strategy forwards so replies reach the original sender */
+    replyTo?: string;
 }
 
-export async function sendEmail({ from, to, subject, html }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ from, to, subject, html, replyTo }: SendEmailParams): Promise<boolean> {
     // Match API key by from domain: "resend_api_keys" stores "domain1:key1,domain2:key2"
     let api_key = SettingsService.get("resend_api_key");
     const keyMap = SettingsService.get("resend_api_keys");
@@ -43,7 +61,7 @@ export async function sendEmail({ from, to, subject, html }: SendEmailParams): P
                 "Authorization": `Bearer ${api_key}`,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ from, to, subject, html }),
+            body: JSON.stringify(replyTo ? { from, to, subject, html, reply_to: replyTo } : { from, to, subject, html }),
         });
 
         if (!response.ok) {
@@ -83,16 +101,57 @@ export function buildVerificationEmail(verifyUrl: string): { subject: string; ht
 
 // ========== Email Storage ==========
 
+/** Push a "new email arrived" notification to all connected dashboard clients. */
+function notifyNewEmail(email: Partial<EmailEntity>): void {
+    try {
+        broadcastWsMessage({
+            name: "email:new",
+            data: {
+                id: email.id,
+                from: email.from,
+                to: email.to,
+                subject: email.subject,
+                time: email.time,
+                account_id: email.account_id,
+                source: email.source,
+            },
+        });
+    } catch (e) {
+        console.error("[EmailService] Broadcast failed:", e);
+    }
+}
+
 export class EmailService {
-    static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number }): Promise<{ list: EmailEntity[]; total: number }> {
-        const { limit, offset = 0 } = config ?? {};
-        const total = await emailRepository.count(where);
-        const list = await emailRepository.find(where, { limit, offset });
+    /** Serializes ingests — a watcher event and a direct ingest of the same
+     *  file must never pass the dedup check concurrently. */
+    private static ingestChain: Promise<any> = Promise.resolve();
+
+    static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number; includeDeleted?: boolean }): Promise<{ list: EmailEntity[]; total: number }> {
+        const { limit, offset = 0, includeDeleted = false } = config ?? {};
+        const total = await emailRepository.count(where, undefined, includeDeleted);
+        const list = await emailRepository.find(where, { limit, offset, includeDeleted });
         return { list, total };
+    }
+
+    /** Stream distinct recipient accounts (non-deleted emails) for filter dropdowns. */
+    static async findEachAccount(callback: (account: string) => void): Promise<void> {
+        await emailRepository.findEach((e) => {
+            if (e.account_id) callback(e.account_id);
+        });
+    }
+
+    /** Stream every non-deleted email (lightweight aggregation use-cases). */
+    static async findEachEmail(callback: (email: EmailEntity) => void): Promise<void> {
+        await emailRepository.findEach((e) => callback(e));
     }
 
     static async findById(id: string): Promise<EmailEntity | null> {
         return await emailRepository.findOne({ id });
+    }
+
+    static async findByMessageId(messageId: string): Promise<EmailEntity | null> {
+        if (!messageId) return null;
+        return await emailRepository.findFirst({ message_id: messageId } as any, true);
     }
 
     static async insert(email: Partial<EmailEntity>): Promise<EmailEntity> {
@@ -108,27 +167,115 @@ export class EmailService {
     }
 
     /**
-     * Receive raw email string, parse and store it in the repository.
-     * Used by the /api/email/receive endpoint (called by external MTA).
+     * Post-storage pipeline shared by all ingest paths:
+     * forward only clean mail, then broadcast to dashboard clients.
      */
-    static async receiveEmail(raw: string): Promise<EmailEntity | null> {
-        const parsed = EmailService.parseRawEmail(raw);
+    private static async finalizeIngest(stored: EmailEntity, blocked: boolean): Promise<void> {
+        if (!blocked && await EmailService.shouldForward(stored)) {
+            const { StrategyService } = await import("../strategy/strategy.service");
+            StrategyService.matchAndForward(stored).catch(e => {
+                console.error("[EmailService] Strategy forward failed:", e);
+            });
+        }
+        notifyNewEmail(stored);
+    }
+
+    /**
+     * Forwarding policy: mail that arrived on our own domains (maildir /
+     * receive) is always eligible; imported mail (api / imap) only when its
+     * mailbox opted in via forward_enabled — private mail pushed in from an
+     * external provider must not leak out through Resend by accident.
+     */
+    private static async shouldForward(stored: EmailEntity): Promise<boolean> {
+        if (stored.source === "api" || stored.source === "imap") {
+            if (!stored.mailbox_id) return false;
+            const box = await mailboxRepository.findOne({ id: stored.mailbox_id } as any);
+            return !!box && box.forward_enabled === 1;
+        }
+        return true;
+    }
+
+    /**
+     * Check whether an identical email was already ingested.
+     * Message-ID wins when present (stable across IMAP/API/receive paths);
+     * otherwise fall back to the content fingerprint (from+to+subject+time).
+     * Includes soft-deleted rows so re-importing an archived mail never
+     * duplicates it.
+     */
+    private static async dedupExists(parsed: { message_id?: string; from?: string; to?: string; subject?: string; time?: number }): Promise<boolean> {
+        if (parsed.message_id) {
+            const byId = await emailRepository.findFirst({ message_id: parsed.message_id } as any, true);
+            if (byId) return true;
+        }
+        const existing = await emailRepository.findFirst(
+            { from: parsed.from || "", to: parsed.to || "", subject: parsed.subject || "", time: parsed.time as any } as any,
+            true,
+        );
+        return existing !== null;
+    }
+
+    /** Persist extracted attachments under DATA_DIR/attachments/<eid>/ and build metadata. */
+    private static storeAttachments(eid: string, attachments: { filename: string; contentType: string; size: number; cid: string; inline: boolean; content: Buffer }[] | null): AttachmentMeta[] | null {
+        if (!attachments || attachments.length === 0) return null;
+        const limit = attachmentLimit();
+        const dir = path.join(getDataDir(), "attachments", eid);
+        const metas: AttachmentMeta[] = [];
+
+        attachments.forEach((att, i) => {
+            if (att.size > limit) {
+                metas.push({ filename: att.filename, contentType: att.contentType, size: att.size, cid: att.cid, inline: att.inline, path: "", skipped: true });
+                return;
+            }
+            const safeName = `${i}_${(att.filename || "attachment").replace(/[\\/:*?"<>|\r\n\0]/g, "_")}`.slice(0, 180);
+            try {
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(path.join(dir, safeName), att.content);
+                metas.push({ filename: att.filename, contentType: att.contentType, size: att.size, cid: att.cid, inline: att.inline, path: safeName, skipped: false });
+            } catch (e) {
+                console.error("[EmailService] Failed to store attachment:", att.filename, e);
+                metas.push({ filename: att.filename, contentType: att.contentType, size: att.size, cid: att.cid, inline: att.inline, path: "", skipped: true });
+            }
+        });
+
+        return metas.length ? metas : null;
+    }
+
+    /**
+     * Core ingest: parse a raw email buffer, dedup, evaluate safety rules,
+     * store attachments, insert the row, then forward + broadcast.
+     * Every source (maildir watcher, HTTP receive, push API, IMAP sync) funnels
+     * here. Ingests are serialized so concurrent discoveries of the same file
+     * (watcher + direct call) cannot slip past the dedup check.
+     * Returns null when the mail is a duplicate or unparseable.
+     */
+    static ingestBuffer(raw: Uint8Array): Promise<EmailEntity | null> {
+        const run = EmailService.ingestChain.then(() => EmailService.ingestBufferInner(raw));
+        EmailService.ingestChain = run.catch(() => null);
+        return run;
+    }
+
+    private static async ingestBufferInner(raw: Uint8Array): Promise<EmailEntity | null> {
+        const parsed = parseRawEmail(raw);
         if (!parsed) return null;
 
-        // Safety check: block blacklisted senders and sensitive words
-        const blocked = await SafetyService.isBlocked(
+        if (await EmailService.dedupExists(parsed)) return null;
+
+        // Evaluate safety rules first — blocked mail is stored but never forwarded
+        const verdict = await SafetyService.evaluate(
             parsed.from || "",
             parsed.subject || "",
             parsed.html || "",
             parsed.text || "",
         );
-        if (blocked) {
-            console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}"`);
-            return null;
+        if (verdict.blocked) {
+            console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}" (${verdict.blockedBy}: ${verdict.rule})`);
         }
 
+        const eid = nanoid(12);
+        const metas = EmailService.storeAttachments(eid, parsed.attachments);
+
         const email: Partial<EmailEntity> = {
-            eid: nanoid(12),
+            eid,
             from: parsed.from || "",
             to: parsed.to || "",
             subject: parsed.subject || "",
@@ -136,50 +283,65 @@ export class EmailService {
             text: parsed.text || "",
             time: parsed.time || Date.now(),
             account_id: parsed.account_id || "",
+            message_id: parsed.message_id || "",
+            source: parsed.source || "maildir",
+            mailbox_id: parsed.mailbox_id || "",
+            attachments: metas,
+            blocked: verdict.blocked ? 1 : 0,
+            blocked_by: verdict.blockedBy,
+            block_rule: verdict.rule,
         };
 
         const stored = await emailRepository.insert(email);
-
-        // Trigger forwarding strategies
-        const { StrategyService } = await import("../strategy/strategy.service");
-        StrategyService.matchAndForward(stored).catch(e => {
-            console.error("[EmailService] Strategy forward failed:", e);
-        });
+        await EmailService.finalizeIngest(stored, verdict.blocked);
 
         return stored;
     }
 
-    /**
-     * Dedup signature: from + to + subject + time uniquely identifies an email.
-     */
-    private static dedupKey(e: { from?: string; to?: string; subject?: string; time?: number }): string {
-        return `${e.from || ""}|${e.to || ""}|${e.subject || ""}|${e.time || 0}`;
-    }
-
-    /** Check if an email with matching fingerprint already exists (incl. soft-deleted). Streams — stops on first hit. */
-    private static async dedupExists(e: { from?: string; to?: string; subject?: string; time?: number }): Promise<boolean> {
-        const existing = await emailRepository.findFirst(
-            { from: e.from, to: e.to, subject: e.subject, time: e.time },
-            true,
-        );
-        return existing !== null;
-    }
-
-    /** Stream-collect dedup keys from all stored emails (incl. soft-deleted) — used only by scanDirectory batch import */
-    private static async collectDedupKeys(): Promise<Set<string>> {
-        const keys = new Set<string>();
-        await emailRepository.findEach((e) => {
-            keys.add(EmailService.dedupKey(e));
-        }, { includeDeleted: true });
-        return keys;
+    /** Ingest an email file from disk (watcher, IMAP sync, batch import). */
+    static async ingestFile(filePath: string): Promise<EmailEntity | null> {
+        const resolvedPath = path.resolve(filePath);
+        try {
+            const content = fs.readFileSync(resolvedPath);
+            return await EmailService.ingestBuffer(content);
+        } catch (e) {
+            console.error("[EmailService] Failed to ingest email file:", filePath, e);
+            return null;
+        }
     }
 
     /**
-     * Scan a directory recursively for Maildir files and import any that don't already exist.
-     * Supports both standard Maildir structure (domain/new/filename) and plain .eml files.
-     * Deduplication: uses from+to+subject+time fingerprint (include soft-deleted to prevent re-import).
-     * Returns { scanned, imported } counts.
+     * Ingest a raw email delivered over HTTP: archive it as a maildir file
+     * (file is the source of truth — re-scans keep working, attachments stay
+     * re-extractable), then run the shared file ingest. The watcher may pick up
+     * the same file afterwards; dedup makes that pass a no-op.
+     * Source metadata is stamped into the archived file so re-scans reproduce
+     * the provenance.
      */
+    static async ingestRaw(raw: string | Uint8Array, options?: {
+        source?: string;
+        mailboxId?: string;
+        folder?: string;
+        /** extra headers stamped into the archived file (override source/mailbox) */
+        headers?: Record<string, string>;
+    }): Promise<EmailEntity | null> {
+        const extra: Record<string, string> = {};
+        if (options?.source) extra["X-CFRS-Source"] = options.source;
+        if (options?.mailboxId) extra["X-CFRS-Mailbox"] = options.mailboxId;
+        Object.assign(extra, options?.headers || {});
+
+        const stamped = stampHeadersBuffer(typeof raw === "string" ? Buffer.from(raw, "utf-8") : raw, extra);
+        const folder = options?.folder || "_receive";
+        const filePath = deliverToMaildir(maildirRoot(), folder, stamped);
+        return await EmailService.ingestFile(filePath);
+    }
+
+    /** Legacy entry point for the /api/email/receive endpoint. */
+    static async receiveEmail(raw: string): Promise<EmailEntity | null> {
+        return await EmailService.ingestRaw(raw, { source: "receive", folder: "_receive" });
+    }
+
+    /** Scan a directory recursively for Maildir files and import any that don't already exist. */
     static async scanDirectory(dirPath: string): Promise<{ scanned: number; imported: number }> {
         if (!fs.existsSync(dirPath)) {
             throw `Directory not found: ${dirPath}`;
@@ -190,52 +352,14 @@ export class EmailService {
             throw `Path is not a directory: ${dirPath}`;
         }
 
-        const existingKeys = await EmailService.collectDedupKeys();
-
         let scanned = 0;
         let imported = 0;
 
         for (const fullPath of EmailService.walkFiles(dirPath)) {
             scanned++;
             try {
-                const content = fs.readFileSync(fullPath, "utf-8");
-                const parsed = EmailService.parseRawEmail(content);
-                if (!parsed) continue;
-
-                if (existingKeys.has(EmailService.dedupKey(parsed))) {
-                    continue;
-                }
-
-                const blocked = await SafetyService.isBlocked(
-                    parsed.from || "",
-                    parsed.subject || "",
-                    parsed.html || "",
-                    parsed.text || "",
-                );
-                if (blocked) {
-                    console.log(`[Safety] Blocked email from "${parsed.from}" subject "${parsed.subject}"`);
-                    continue;
-                }
-
-                const email: Partial<EmailEntity> = {
-                    eid: nanoid(12),
-                    from: parsed.from || "",
-                    to: parsed.to || "",
-                    subject: parsed.subject || "",
-                    html: parsed.html || "",
-                    text: parsed.text || "",
-                    time: parsed.time || Date.now(),
-                    account_id: parsed.account_id || "",
-                };
-
-                await emailRepository.insert(email);
-                existingKeys.add(EmailService.dedupKey(email));
-                imported++;
-
-                const { StrategyService } = await import("../strategy/strategy.service");
-                StrategyService.matchAndForward(email as any).catch(e => {
-                    console.error("[EmailService] Strategy forward failed:", e);
-                });
+                const stored = await EmailService.ingestFile(fullPath);
+                if (stored) imported++;
             } catch (e) {
                 console.error("[EmailService] Failed to import:", fullPath, e);
             }
@@ -254,212 +378,6 @@ export class EmailService {
             } else if (entry.isFile()) {
                 yield full;
             }
-        }
-    }
-
-    /**
-     * Parse an email file from disk and store it in the repository.
-     * Simple MIME parser — extracts headers and body.
-     */
-    static async importFromFile(filePath: string): Promise<EmailEntity | null> {
-        const resolvedPath = path.resolve(filePath);
-
-        try {
-            const content = fs.readFileSync(resolvedPath, "utf-8");
-            const parsed = EmailService.parseRawEmail(content);
-            if (!parsed) return null;
-
-            // Dedup by content fingerprint (from+to+subject+time), even if soft-deleted
-            const exists = await EmailService.dedupExists(parsed);
-            if (exists) return null;
-
-            const email: Partial<EmailEntity> = {
-                eid: nanoid(12),
-                from: parsed.from || "",
-                to: parsed.to || "",
-                subject: parsed.subject || "",
-                html: parsed.html || "",
-                text: parsed.text || "",
-                time: parsed.time || Date.now(),
-                account_id: parsed.account_id || "",
-            };
-
-            return await emailRepository.insert(email);
-        } catch (e) {
-            console.error("Failed to import email from file:", filePath, e);
-            return null;
-        }
-    }
-
-    /**
-     * Decode RFC 2047 MIME encoded-words like =?UTF-8?B?base64?= or =?UTF-8?Q?quoted-printable?=
-     */
-    /**
-     * Map common charsets to TextDecoder-compatible labels.
-     */
-    private static resolveCharset(charset: string): string {
-        const m: Record<string, string> = {
-            "gb2312": "gbk",
-            "gbk": "gbk",
-            "gb18030": "gb18030",
-            "big5": "big5",
-            "shift_jis": "shift-jis",
-            "euc-jp": "euc-jp",
-            "euc-kr": "euc-kr",
-            "windows-1252": "windows-1252",
-            "windows-874": "windows-874",
-            "iso-8859-1": "iso-8859-1",
-            "iso-8859-2": "iso-8859-2",
-            "iso-8859-6": "iso-8859-6",
-        };
-        const key = charset.toLowerCase();
-        return m[key] || "utf-8";
-    }
-
-    private static decodeMimeHeader(value: string): string {
-        return value.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_match, charset: string, encoding: string, data: string) => {
-            try {
-                const decoder = EmailService.resolveCharset(charset);
-                if (encoding.toUpperCase() === "B") {
-                    return new TextDecoder(decoder).decode(Buffer.from(data, "base64"));
-                } else if (encoding.toUpperCase() === "Q") {
-                    const bytes: number[] = [];
-                    const src = data.replace(/_/g, " ");
-                    let i = 0;
-                    while (i < src.length) {
-                        if (src[i] === "=" && i + 2 < src.length) {
-                            bytes.push(parseInt(src.substring(i + 1, i + 3), 16));
-                            i += 3;
-                        } else {
-                            bytes.push(src.charCodeAt(i));
-                            i++;
-                        }
-                    }
-                    return new TextDecoder(decoder).decode(new Uint8Array(bytes));
-                }
-            } catch { /* use raw if decode fails */ }
-            return data;
-        });
-    }
-
-    /**
-     * Decode a body part according to Content-Transfer-Encoding.
-     */
-    private static decodeBody(body: string, encoding: string, charset?: string): string {
-        const dec = EmailService.resolveCharset(charset || "utf-8");
-        const enc = encoding.toLowerCase();
-        if (enc === "base64") {
-            try {
-                return new TextDecoder(dec).decode(Buffer.from(body.replace(/[\s\n\r]/g, ""), "base64"));
-            } catch { /* fall through */ }
-        } else if (enc === "quoted-printable") {
-            // Decode via bytes to properly handle multi-byte UTF-8 sequences like =E9=AA=8C
-            const bytes: number[] = [];
-            const src = body.replace(/=\r?\n/g, "");      // soft line breaks
-            let i = 0;
-            while (i < src.length) {
-                if (src[i] === "=" && i + 2 < src.length) {
-                    bytes.push(parseInt(src.substring(i + 1, i + 3), 16));
-                    i += 3;
-                } else {
-                    bytes.push(src.charCodeAt(i));
-                    i++;
-                }
-            }
-            return new TextDecoder(dec).decode(new Uint8Array(bytes));
-        }
-        return body;
-    }
-
-    /**
-     * Simple email parser. Extracts headers and separates text/html parts.
-     */
-    private static parseRawEmail(raw: string): { from?: string; to?: string; subject?: string; text?: string; html?: string; time?: number; account_id?: string } | null {
-        try {
-            const headerEnd = raw.indexOf("\r\n\r\n") !== -1 ? raw.indexOf("\r\n\r\n") : raw.indexOf("\n\n");
-            if (headerEnd === -1) return null;
-
-            const headerSection = raw.substring(0, headerEnd);
-            const bodySection = raw.substring(headerEnd + (raw.indexOf("\r\n\r\n") !== -1 ? 4 : 2));
-
-            const headers: Record<string, string> = {};
-            const headerLines = headerSection.split(/\r?\n/);
-            let currentKey = "";
-            for (const line of headerLines) {
-                if (/^\s/.test(line) && currentKey) {
-                    headers[currentKey] += " " + line.trim();
-                } else {
-                    const colonIdx = line.indexOf(":");
-                    if (colonIdx > 0) {
-                        currentKey = line.substring(0, colonIdx).toLowerCase();
-                        headers[currentKey] = line.substring(colonIdx + 1).trim();
-                    }
-                }
-            }
-
-            const from = EmailService.decodeMimeHeader(headers["from"] || "");
-            const to = EmailService.decodeMimeHeader(headers["to"] || "");
-            const subject = EmailService.decodeMimeHeader(headers["subject"] || "");
-            const dateStr = headers["date"] || "";
-            const time = dateStr ? new Date(dateStr).getTime() : Date.now();
-
-            // Try to find recipient as account_id
-            let account_id = "";
-            const toMatch = to.match(/[\w.-]+@[\w.-]+/);
-            if (toMatch) {
-                account_id = toMatch[0].split("@")[0];
-            }
-
-            // Parse body — check for multipart boundaries
-            const contentType = headers["content-type"] || "";
-            const boundaryMatch = contentType.match(/boundary="?([^";\s]+)"?/);
-
-            if (boundaryMatch) {
-                const boundary = boundaryMatch[1];
-                const parts = bodySection.split("--" + boundary);
-                let text = "";
-                let html = "";
-
-                for (const part of parts) {
-                    // Extract part headers for transfer encoding
-                    const partHeaders: Record<string, string> = {};
-                    const partHeaderMatch = part.match(/([\s\S]*?)\r?\n\r?\n/);
-                    if (partHeaderMatch) {
-                        for (const line of partHeaderMatch[1].split(/\r?\n/)) {
-                            const ci = line.indexOf(":");
-                            if (ci > 0) {
-                                partHeaders[line.substring(0, ci).toLowerCase()] = line.substring(ci + 1).trim();
-                            }
-                        }
-                    }
-                    const partContentType = partHeaders["content-type"] || "";
-                    const partEncoding = partHeaders["content-transfer-encoding"] || "";
-                    const partCharset = (partContentType.match(/charset="?([^";\s]+)"?/i) || [])[1] || "";
-
-                    if (partContentType.includes("text/plain")) {
-                        const partBody = part.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
-                        text = EmailService.decodeBody(partBody, partEncoding, partCharset);
-                    } else if (partContentType.includes("text/html")) {
-                        const partBody = part.split(/\r?\n\r?\n/).slice(1).join("\n\n").trim();
-                        html = EmailService.decodeBody(partBody, partEncoding, partCharset);
-                    }
-                }
-
-                return { from, to, subject, text, html, time, account_id };
-            } else {
-                // Single part
-                const encoding = headers["content-transfer-encoding"] || "";
-                const charset = (contentType.match(/charset="?([^";\s]+)"?/i) || [])[1] || "";
-                const body = EmailService.decodeBody(bodySection, encoding, charset);
-
-                if (contentType.includes("text/html")) {
-                    return { from, to, subject, html: body, text: body.replace(/<[^>]+>/g, ""), time, account_id };
-                } else {
-                    return { from, to, subject, text: body, html: "", time, account_id };
-                }
-            }
-        } catch {
-            return null;
         }
     }
 }
@@ -492,13 +410,7 @@ export function startEmailWatcher(maildirPath: string): void {
         if (!normalized.includes("/new/")) return;
 
         try {
-            const email = await EmailService.importFromFile(filePath);
-            if (email) {
-                const { StrategyService } = await import("../strategy/strategy.service");
-                StrategyService.matchAndForward(email).catch(e => {
-                    console.error("[EmailWatcher] Strategy forward failed:", e);
-                });
-            }
+            await EmailService.ingestFile(filePath);
         } catch (e) {
             console.error("[EmailWatcher] Failed to process email:", e);
         }

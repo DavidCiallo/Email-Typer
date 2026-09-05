@@ -1,7 +1,10 @@
 import { BaseRequest, BaseResponse } from "../../lib/default/decorator";
 import { EmailEntity } from "./email.entity";
 
-export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id">;
+export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id" | "blocked" | "blocked_by" | "block_rule" | "message_id" | "source" | "mailbox_id"> & {
+    has_attachments: boolean;
+    attachment_count: number;
+};
 
 // Query email list
 export class EmailListRequest implements BaseRequest {
@@ -9,12 +12,22 @@ export class EmailListRequest implements BaseRequest {
     public limit?: number;
     public offset?: number;
     public account_id?: string;
+    public q?: string;
+    public archived?: boolean;
+    public blocked?: boolean;
+    public source?: string;
+    public mailbox_id?: string;
 
     constructor(origin: Partial<EmailListRequest>) {
         origin.auth && (this.auth = origin.auth);
         this.limit = origin.limit;
         this.offset = origin.offset;
         this.account_id = origin.account_id;
+        this.q = origin.q;
+        this.archived = origin.archived;
+        this.blocked = origin.blocked;
+        this.source = origin.source;
+        this.mailbox_id = origin.mailbox_id;
     }
     static self(unsafe: EmailListRequest) {
         return new EmailListRequest(unsafe);
@@ -24,7 +37,7 @@ export class EmailListRequest implements BaseRequest {
 export class EmailListResponse implements BaseResponse<EmailDTO[]> {
     public success: boolean;
     public message: string;
-    public data?: { list: EmailDTO[]; total: number };
+    public data?: { list: EmailDTO[]; total: number; accounts?: string[] };
 
     constructor(origin: EmailListResponse) {
         this.success = origin.success;
@@ -206,6 +219,90 @@ export class EmailRestoreResponse implements BaseResponse<null> {
     public message: string;
 
     constructor(origin: EmailRestoreResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+    }
+}
+
+// Push structured email via API (auth: per-mailbox api_key or the receive master key)
+export interface EmailPushAttachment {
+    filename: string;
+    contentType?: string;
+    base64?: string;
+}
+
+export class EmailPushRequest implements BaseRequest {
+    public auth?: string;
+    public to?: string;          // required when authenticating with the master key
+    public from?: string;
+    public subject?: string;
+    public html?: string;
+    public text?: string;
+    public attachments?: EmailPushAttachment[];
+    public message_id?: string;
+    // Raw MIME passthrough — for bridge scripts that already hold a full
+    // RFC 822 message. Either a complete message/rfc822 request body
+    // (Content-Type: message/rfc822) or one of these fields.
+    public raw?: string;
+    public raw_base64?: string;
+
+    constructor(origin: Partial<EmailPushRequest>) {
+        origin.auth && (this.auth = origin.auth);
+        this.to = origin.to;
+        this.from = origin.from;
+        this.subject = origin.subject;
+        this.html = origin.html;
+        this.text = origin.text;
+        this.attachments = origin.attachments;
+        this.message_id = origin.message_id;
+        this.raw = origin.raw;
+        this.raw_base64 = origin.raw_base64;
+    }
+    static self(unsafe: any) {
+        return new EmailPushRequest(unsafe);
+    }
+}
+
+export interface EmailPushAttachmentResult {
+    stored: number;
+    skipped: number;
+    skipped_files: string[];
+}
+
+export class EmailPushResponse implements BaseResponse<{ id: string; to: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult }> {
+    public success: boolean;
+    public message: string;
+    public data?: { id: string; to: string; message_id: string; duplicate: boolean; attachments: EmailPushAttachmentResult };
+
+    constructor(origin: EmailPushResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+// Download one attachment of an email (responds with the raw file)
+export class EmailAttachmentRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+    public index: number;
+
+    constructor(origin: Partial<EmailAttachmentRequest>) {
+        if (!origin.id) throw new Error("Email id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+        this.index = Number(origin.index) || 0;
+    }
+    static self(unsafe: any) {
+        return new EmailAttachmentRequest(unsafe);
+    }
+}
+
+export class EmailAttachmentResponse implements BaseResponse<null> {
+    public success: boolean;
+    public message: string;
+
+    constructor(origin: EmailAttachmentResponse) {
         this.success = origin.success;
         this.message = origin.message;
     }

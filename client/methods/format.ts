@@ -34,3 +34,26 @@ export function formatEmail(raw: string): { name: string; email: string } {
 
     return { name, email };
 }
+
+/** Human label for a safety block reason ("blacklist" | "sensitive_word"). */
+export function blockLabel(blockedBy?: string): string {
+    if (blockedBy === "blacklist") return "黑名单";
+    if (blockedBy === "sensitive_word") return "敏感词";
+    return "拦截";
+}
+
+/** Human label for a mail source ("maildir" | "api" | "imap" | "receive"). */
+export function sourceLabel(source?: string): string {
+    if (source === "api") return "API";
+    if (source === "imap") return "IMAP";
+    if (source === "receive") return "接口";
+    return "收信";
+}
+
+/** "1523" → "1.5 KB" */
+export function formatSize(bytes?: number): string {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}

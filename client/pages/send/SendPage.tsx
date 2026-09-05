@@ -1,7 +1,10 @@
-import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
-import { Button, Card, CardBody, Input, Textarea } from "@heroui/react";
 import { EmailRouter, AuthRouter } from "../../api/instance";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
 import { toast } from "../../methods/notify";
 
 const SenderPage = () => {
@@ -34,63 +37,58 @@ const SenderPage = () => {
         setTimeout(() => setJustSend(false), 5000);
         EmailRouter.send({ email: { from, to, subject, html } }, (res: any) => {
             if (res.success) {
-                toast({ title: "发送成功", color: "primary" });
+                toast({ title: "发送成功", color: "success" });
             } else {
                 toast({ title: res.message || "发送失败", color: "danger" });
             }
         })
     }
     return (
-        <div className="max-w-screen">
-            <Header name="发送邮件" />
-            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6">
-                <Card className="mb-2">
-                    <CardBody className="flex flex-col md:flex-row">
-                        <Input
-                            label="收件人"
-                            placeholder="请输入邮箱"
-                            className="md:w-2/5 md:mr-6 my-1"
-                            variant="underlined"
-                            value={to}
-                            onValueChange={setTo}
-                        />
-                        <Input
-                            label="主题"
-                            className="my-1"
-                            placeholder="请输入主题"
-                            variant="underlined"
-                            value={subject}
-                            onValueChange={setSubject}
-                        />
-                    </CardBody>
-                </Card>
-                <Card className="mt-2">
-                    <CardBody>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <Card>
+                <CardContent className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-4 md:flex-row">
+                        <div className="flex flex-1 flex-col gap-2">
+                            <Label htmlFor="send-to">收件人</Label>
+                            <Input
+                                id="send-to"
+                                placeholder="请输入邮箱"
+                                value={to}
+                                onChange={(e) => setTo(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex flex-1 flex-col gap-2">
+                            <Label htmlFor="send-subject">主题</Label>
+                            <Input
+                                id="send-subject"
+                                placeholder="请输入主题"
+                                value={subject}
+                                onChange={(e) => setSubject(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="send-content">内容</Label>
                         <Textarea
-                            label="内容"
+                            id="send-content"
                             placeholder="请输入内容"
-                            variant="bordered"
                             value={html}
-                            minRows={14}
-                            onValueChange={setHtml}
+                            rows={14}
+                            onChange={(e) => setHtml(e.target.value)}
                         />
-                    </CardBody>
-                </Card>
-                <div className="mx-auto w-3/4 md:mx-0 md:w-100 mt-5 flex flex-col md:flex-row justify-end items-center">
-                    <Input
-                        placeholder={placeholder}
-                        className="w-full md:w-80 md:mr-4 my-2"
-                        variant="underlined"
-                        value={from}
-                        onValueChange={setFrom}
-                    />
-                    <Button
-                        color={justSend ? "default" : "primary"}
-                        className="my-2" onClick={sendEmail}
-                    >
-                        发送邮件
-                    </Button>
-                </div>
+                    </div>
+                </CardContent>
+            </Card>
+            <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-end">
+                <Input
+                    placeholder={placeholder}
+                    className="md:w-80"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                />
+                <Button onClick={sendEmail} disabled={justSend} className="md:w-32">
+                    发送邮件
+                </Button>
             </div>
         </div>
     )

@@ -1,18 +1,29 @@
-import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
 import { SettingsRouter, AccountRouter } from "../../api/instance";
 import { SettingsEntry } from "../../../shared/modules/settings/settings.interface";
-import { Button, Card, CardBody, Input } from "@heroui/react";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Switch } from "../../components/ui/switch";
+import { TagInput, KeyValueList } from "./editors";
 import { toast } from "../../methods/notify";
 
 const FIELD_LABELS: Record<string, string> = {
-    allow_register: "允许注册（1=开启, 0=关闭）",
+    allow_register: "允许注册",
     resend_api_key: "Resend API Key（默认）",
-    resend_api_keys: "Resend API Keys（多域名，格式：domain1:key1,domain2:key2）",
+    resend_api_keys: "Resend API Keys（按域名）",
     allowed_domains: "允许注册的域名",
     allowed_from_domains: "允许发件的域名",
     client_url: "客户端地址",
 };
+
+/** Display order & section grouping for known keys; unknown keys go to "其他". */
+const SECTIONS: { title: string; keys: string[] }[] = [
+    { title: "注册与域名", keys: ["allow_register", "allowed_domains", "allowed_from_domains"] },
+    { title: "邮件发送", keys: ["resend_api_key", "resend_api_keys"] },
+    { title: "其他", keys: ["client_url"] },
+];
 
 export default function SettingsPage() {
     const [entries, setEntries] = useState<SettingsEntry[]>([]);
@@ -37,7 +48,7 @@ export default function SettingsPage() {
         setSaving(true);
         SettingsRouter.save({ entries }, (res: any) => {
             if (res.success) {
-                toast({ title: "保存成功", color: "primary" });
+                toast({ title: "保存成功", color: "success" });
             } else {
                 toast({ title: "保存失败", color: "danger" });
             }
@@ -59,7 +70,7 @@ export default function SettingsPage() {
             a.download = `cfrs-export-${new Date().toISOString().slice(0, 10)}.json`;
             a.click();
             URL.revokeObjectURL(url);
-            toast({ title: "导出成功", color: "primary" });
+            toast({ title: "导出成功", color: "success" });
         });
     };
 
@@ -77,7 +88,7 @@ export default function SettingsPage() {
                     if (res.success) {
                         const counts = Object.entries(res.data?.imported || {})
                             .map(([k, v]) => `${k}: ${v}`).join(", ");
-                        toast({ title: `导入成功 (${counts})`, color: "primary" });
+                        toast({ title: `导入成功 (${counts})`, color: "success" });
                     } else {
                         toast({ title: "导入失败", color: "danger" });
                     }
@@ -89,47 +100,91 @@ export default function SettingsPage() {
         input.click();
     };
 
-    return (
-        <div className="max-w-screen">
-            <Header name="系统设置" />
-            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6">
-                <div className="w-full flex flex-row justify-end items-center mb-4 gap-2">
-                    <Button size="sm" color="primary" variant="bordered" onPress={handleExport}>
-                        导出数据
-                    </Button>
-                    <Button size="sm" color="warning" variant="bordered" onPress={handleImport}>
-                        导入数据
-                    </Button>
+    const renderEditor = (e: SettingsEntry) => {
+        if (e.key === "allow_register") {
+            return (
+                <div className="flex items-center gap-2 pt-1">
+                    <Switch
+                        checked={e.value === "1"}
+                        onCheckedChange={(checked) => updateEntry(e.key, checked ? "1" : "0")}
+                    />
+                    <span className="text-muted-foreground text-sm">
+                        {e.value === "1" ? "开启" : "关闭"}
+                    </span>
                 </div>
-                {loading ? (
-                    <div className="text-center text-gray-400 py-8">加载中...</div>
-                ) : (
-                    <>
-                        <Card>
-                            <CardBody className="flex flex-col gap-4">
-                                {entries.map(e => (
-                                    <div key={e.key} className="flex flex-col gap-1">
-                                        <label className="text-sm font-medium text-gray-600">
-                                            {FIELD_LABELS[e.key] || e.key}
-                                        </label>
-                                        <Input
-                                            size="sm"
-                                            variant="bordered"
-                                            value={e.value}
-                                            onValueChange={(val) => updateEntry(e.key, val)}
-                                        />
-                                    </div>
-                                ))}
-                            </CardBody>
-                        </Card>
-                        <div className="flex items-center gap-4 mt-4">
-                            <Button size="sm" color="primary" isLoading={saving} onPress={handleSave}>
-                                保存设置
-                            </Button>
-                        </div>
-                    </>
-                )}
+            );
+        }
+        if (e.key === "allowed_domains" || e.key === "allowed_from_domains") {
+            return (
+                <TagInput
+                    value={e.value}
+                    onChange={(v) => updateEntry(e.key, v)}
+                    placeholder="输入域名后回车，如 example.com"
+                />
+            );
+        }
+        if (e.key === "resend_api_keys") {
+            return <KeyValueList value={e.value} onChange={(v) => updateEntry(e.key, v)} />;
+        }
+        return (
+            <Input
+                value={e.value}
+                onChange={(ev) => updateEntry(e.key, ev.target.value)}
+            />
+        );
+    };
+
+    const sectionFor = (key: string) =>
+        SECTIONS.find((s) => s.keys.includes(key))?.title || "其他";
+
+    // Group entries by section, keeping the section order above
+    const grouped = SECTIONS
+        .map((s) => ({
+            title: s.title,
+            entries: entries.filter((e) => sectionFor(e.key) === s.title),
+        }))
+        .filter((s) => s.entries.length > 0);
+
+    return (
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <div className="flex w-full flex-row justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={handleExport}>
+                    导出数据
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleImport}>
+                    导入数据
+                </Button>
             </div>
+            {loading ? (
+                <div className="text-muted-foreground py-8 text-center">加载中...</div>
+            ) : (
+                <>
+                    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+                        {grouped.map((section) => (
+                            <Card key={section.title}>
+                                <CardHeader>
+                                    <CardTitle>{section.title}</CardTitle>
+                                </CardHeader>
+                                <CardContent className="flex flex-col gap-4">
+                                    {section.entries.map(e => (
+                                        <div key={e.key} className="flex flex-col gap-2">
+                                            <Label htmlFor={`setting-${e.key}`}>
+                                                {FIELD_LABELS[e.key] || e.key}
+                                            </Label>
+                                            {renderEditor(e)}
+                                        </div>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <Button disabled={saving} onClick={handleSave}>
+                            保存设置
+                        </Button>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

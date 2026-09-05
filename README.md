@@ -70,6 +70,26 @@ npm run build
 ```
 将在 dist 目录下生成前端静态打包文件，可部署到任何静态文件服务器中；同时生成bundle.mjs文件，可部署到任何支持Node.js的服务器中。
 
+## Push API（外部邮件投递）
+
+在「邮箱管理」页创建 **API 推送** 型邮箱后，外部系统即可凭该邮箱的 API Key 把邮件投递进来（收件地址固定为邮箱地址，支持跨域，适合脚本 / 浏览器自动化桥接受限邮箱）：
+
+```bash
+# 结构化推送（服务端代为合成 RFC822 邮件）
+curl -X POST http://localhost:3300/api/email/push \
+  -H "x-api-key: mk_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"subject": "hi", "html": "<b>hello</b>", \
+       "attachments": [{"filename": "a.txt", "base64": "..."}]}'
+
+# 原始邮件透传（脚本已持有完整 .eml / RFC822 时）
+curl -X POST http://localhost:3300/api/email/push \
+  -H "x-api-key: mk_xxx" \
+  -H "Content-Type: message/rfc822" \
+  --data-binary @mail.eml
+```
+
+说明：JSON 体亦可用 `raw`（UTF-8 原文）或 `raw_base64` 字段透传原始邮件；带 `message_id` 可实现幂等重试（重复投递返回已存记录并标记 `duplicate`）；响应包含附件入库结果（超过大小上限的附件会列在 `skipped_files`）。默认每 Key 每分钟限 120 次，可用 `PUSH_RATE_LIMIT_PER_MIN` 调整（0 为不限）。
 
 ## 许可证
 

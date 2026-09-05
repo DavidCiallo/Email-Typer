@@ -1,4 +1,4 @@
-import './App.css';
+import './styles/globals.css';
 
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
@@ -9,7 +9,10 @@ import SenderPage from './pages/send/SendPage';
 import SafetyPage from './pages/safety/SafetyPage';
 import ThirdpartyPage from './pages/thirdparty/ThirdpartyPage';
 import SettingsPage from './pages/settings/SettingsPage';
+import MailboxPage from './pages/mailbox/MailboxPage';
+import { AdminLayout } from './components/admin/layout';
 import { autoRecordLive } from './methods/status';
+import { connectLive } from './lib/livews';
 import { AuthRouter } from './api/instance';
 
 const PrivateRoute = ({ redirectPath = '/auth' }) => {
@@ -36,18 +39,26 @@ const PrivateRoute = ({ redirectPath = '/auth' }) => {
 
 const App = () => {
   autoRecordLive();
+
+  useEffect(() => {
+    connectLive();
+  }, []);
+
   return (
     <Router>
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
 
         <Route element={<PrivateRoute />}>
-          <Route path="/inbox" element={<InboxPage />} />
-          <Route path="/strategy" element={<StrategyPage />} />
-          <Route path="/send" element={<SenderPage />} />
-          <Route path="/safety" element={<SafetyPage />} />
-          <Route path="/thirdparty" element={<ThirdpartyPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route element={<AdminLayout />}>
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/mailbox" element={<MailboxPage />} />
+            <Route path="/strategy" element={<StrategyPage />} />
+            <Route path="/send" element={<SenderPage />} />
+            <Route path="/safety" element={<SafetyPage />} />
+            <Route path="/thirdparty" element={<ThirdpartyPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
         </Route>
         <Route path="/" element={<Navigate to="/inbox" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,30 @@
-import { Header } from "../../components/header/Header";
 import { useEffect, useRef, useState } from "react";
 import { ThirdpartyRouter } from "../../api/instance";
-import { Button, Card, CardBody, Chip, Form, Input, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Tooltip } from "@heroui/react";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "../../components/ui/table";
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "../../components/ui/dialog";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { toast } from "../../methods/notify";
 import { copytext } from "../../methods/text";
 
@@ -84,179 +107,206 @@ const ThirdpartyPage = () => {
     }, []);
 
     return (
-        <div className="max-w-screen">
-            <Header name="三方邮箱" />
-            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6">
-                <div className="w-full flex flex-row justify-end items-center mb-4">
-                    <Button onClick={openCreate} color="primary" variant="bordered">添加邮箱</Button>
-                </div>
-                <div className="w-full hidden md:block">
-                    <Table aria-label="三方邮箱列表">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <div className="flex w-full flex-row justify-end">
+                <Button variant="outline" onClick={openCreate}>添加邮箱</Button>
+            </div>
+            <div className="hidden w-full md:block">
+                <div className="rounded-lg border bg-card shadow-xs">
+                    <Table className="table-fixed">
                         <TableHeader>
-                            <TableColumn>邮箱</TableColumn>
-                            <TableColumn>密码</TableColumn>
-                            <TableColumn>登录站点</TableColumn>
-                            <TableColumn>关联邮箱</TableColumn>
-                            <TableColumn>备注</TableColumn>
-                            <TableColumn>操作</TableColumn>
+                            <TableRow>
+                                <TableHead className="w-52">邮箱</TableHead>
+                                <TableHead className="w-32">密码</TableHead>
+                                <TableHead>登录站点</TableHead>
+                                <TableHead className="w-44">关联邮箱</TableHead>
+                                <TableHead className="w-36">备注</TableHead>
+                                <TableHead className="w-36 text-right">操作</TableHead>
+                            </TableRow>
                         </TableHeader>
-                        <TableBody emptyContent="暂无数据">
-                            {list.map((row: any) => (
-                                <TableRow key={row.id}>
-                                    <TableCell>
-                                        <span>{row.email}</span>
-                                        <span
-                                            className="text-primary cursor-pointer ml-2 text-xs"
-                                            onClick={() => { copytext(row.email); toast({ title: "邮箱已复制", color: "success" }); }}
-                                        >复制</span>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Tooltip content="点击复制" delay={500}>
-                                            <span
-                                                className="cursor-pointer"
-                                                onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
-                                            >
-                                                ●●●●●●●●
-                                            </span>
-                                        </Tooltip>
-                                        <span
-                                            className="text-primary cursor-pointer ml-2 text-xs"
-                                            onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
-                                        >复制</span>
-                                    </TableCell>
-                                    <TableCell>
-                                        {row.login_site ? (
-                                            <a href={row.login_site} target="_blank" rel="noopener" className="text-primary underline">{row.login_site}</a>
-                                        ) : "-"}
-                                    </TableCell>
-                                    <TableCell>{row.link_email || "-"}</TableCell>
-                                    <TableCell>{row.remark || "-"}</TableCell>
-                                    <TableCell>
-                                        <div className="flex gap-2">
-                                            <Button size="sm" variant="light" onClick={() => openEdit(row)}>编辑</Button>
-                                            <Button size="sm" color="danger" variant="light" onClick={() => submitDelete(row)}>删除</Button>
-                                        </div>
+                        <TableBody>
+                            {list.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                        暂无数据
                                     </TableCell>
                                 </TableRow>
-                            ))}
+                            ) : (
+                                list.map((row: any) => (
+                                    <TableRow key={row.id}>
+                                        <TableCell>
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <span className="truncate" title={row.email}>{row.email}</span>
+                                                <button
+                                                    className="text-primary shrink-0 cursor-pointer text-xs hover:underline"
+                                                    onClick={() => { copytext(row.email); toast({ title: "邮箱已复制", color: "success" }); }}
+                                                >复制</button>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <span
+                                                            className="cursor-pointer"
+                                                            onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
+                                                        >
+                                                            ●●●●●●●●
+                                                        </span>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>点击复制</TooltipContent>
+                                                </Tooltip>
+                                                <button
+                                                    className="text-primary shrink-0 cursor-pointer text-xs hover:underline"
+                                                    onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
+                                                >复制</button>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="truncate" title={row.login_site || undefined}>
+                                                {row.login_site ? (
+                                                    <a href={row.login_site} target="_blank" rel="noopener" className="text-primary underline">{row.login_site}</a>
+                                                ) : "-"}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="truncate" title={row.link_email || undefined}>{row.link_email || "-"}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="truncate" title={row.remark || undefined}>{row.remark || "-"}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex justify-end gap-2">
+                                                <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-destructive hover:text-destructive"
+                                                    onClick={() => submitDelete(row)}
+                                                >删除</Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                 </div>
-                <div className="w-full block sm:hidden">
+            </div>
+            <div className="block w-full sm:hidden">
+                <div className="flex flex-col gap-2">
                     {list.map((row: any) => (
-                        <Card key={row.id} className="w-full max-w-full my-1">
-                            <CardBody className="max-w-[90vw] mx-auto">
-                                <div className="flex flex-row items-center overflow-x-hidden">
-                                    <Chip color="primary" variant="bordered" className="text-primary shrink-0">
-                                        <div className="w-8 text-center">邮箱</div>
-                                    </Chip>
-                                    <span className="text-sm ml-1 truncate">{row.email}</span>
-                                    <span
-                                        className="text-primary cursor-pointer ml-2 text-xs shrink-0"
+                        <Card key={row.id} className="w-full max-w-full py-3">
+                            <CardContent className="flex flex-col gap-2 px-3">
+                                <div className="flex items-center gap-1.5 overflow-x-hidden">
+                                    <Badge variant="outline" className="shrink-0">邮箱</Badge>
+                                    <span className="truncate text-sm">{row.email}</span>
+                                    <button
+                                        className="text-primary shrink-0 cursor-pointer ml-2 text-xs hover:underline"
                                         onClick={() => { copytext(row.email); toast({ title: "邮箱已复制", color: "success" }); }}
-                                    >复制</span>
+                                    >复制</button>
                                 </div>
-                                <div className="flex flex-row items-center mt-2 overflow-x-hidden">
-                                    <Chip color="primary" variant="bordered" className="text-primary shrink-0">
-                                        <div className="w-8 text-center">密码</div>
-                                    </Chip>
-                                    <span className="text-sm ml-1">●●●●●●●●</span>
-                                    <span
-                                        className="text-primary cursor-pointer ml-2 text-xs shrink-0"
+                                <div className="flex items-center gap-1.5 overflow-x-hidden">
+                                    <Badge variant="outline" className="shrink-0">密码</Badge>
+                                    <span className="text-sm">●●●●●●●●</span>
+                                    <button
+                                        className="text-primary shrink-0 cursor-pointer ml-2 text-xs hover:underline"
                                         onClick={() => { copytext(row.password); toast({ title: "密码已复制", color: "success" }); }}
-                                    >复制</span>
+                                    >复制</button>
                                 </div>
-                                <div className="flex flex-row items-center mt-2 overflow-x-hidden">
-                                    <Chip color="primary" variant="bordered" className="text-primary shrink-0">
-                                        <div className="w-8 text-center">站点</div>
-                                    </Chip>
-                                    <span className="text-sm ml-1 truncate">
+                                <div className="flex items-center gap-1.5 overflow-x-hidden">
+                                    <Badge variant="outline" className="shrink-0">站点</Badge>
+                                    <span className="truncate text-sm">
                                         {row.login_site ? (
                                             <a href={row.login_site} target="_blank" rel="noopener" className="text-primary underline">{row.login_site}</a>
                                         ) : "-"}
                                     </span>
                                 </div>
-                                <div className="flex flex-row items-center mt-2 overflow-x-hidden">
-                                    <Chip color="primary" variant="bordered" className="text-primary shrink-0">
-                                        <div className="w-8 text-center">关联</div>
-                                    </Chip>
-                                    <span className="text-sm ml-1 truncate">{row.link_email || "-"}</span>
+                                <div className="flex items-center gap-1.5 overflow-x-hidden">
+                                    <Badge variant="outline" className="shrink-0">关联</Badge>
+                                    <span className="truncate text-sm">{row.link_email || "-"}</span>
                                 </div>
-                                <div className="flex flex-row items-center mt-2 overflow-x-hidden">
-                                    <Chip color="primary" variant="bordered" className="text-primary shrink-0">
-                                        <div className="w-8 text-center">备注</div>
-                                    </Chip>
-                                    <span className="text-sm ml-1 truncate">{row.remark || "-"}</span>
+                                <div className="flex items-center gap-1.5 overflow-x-hidden">
+                                    <Badge variant="outline" className="shrink-0">备注</Badge>
+                                    <span className="truncate text-sm">{row.remark || "-"}</span>
                                 </div>
-                                <div className="flex gap-2 mt-3 justify-end">
-                                    <Button size="sm" variant="light" onClick={() => openEdit(row)}>编辑</Button>
-                                    <Button size="sm" color="danger" variant="light" onClick={() => submitDelete(row)}>删除</Button>
+                                <div className="mt-1 flex justify-end gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-destructive hover:text-destructive"
+                                        onClick={() => submitDelete(row)}
+                                    >删除</Button>
                                 </div>
-                            </CardBody>
+                            </CardContent>
                         </Card>
                     ))}
-                    {list.length === 0 && <div className="text-center text-gray-400 py-8">暂无数据</div>}
+                    {list.length === 0 && (
+                        <div className="text-muted-foreground py-8 text-center">暂无数据</div>
+                    )}
                 </div>
             </div>
 
-            <Modal isOpen={modalOpen} onOpenChange={setModalOpen} className="w-full">
-                <ModalContent className="md:min-w-[600px]">
-                    {(onClose) => (
-                        <>
-                            <ModalHeader>{isEdit ? "编辑邮箱" : "添加邮箱"}</ModalHeader>
-                            <ModalBody>
-                                <Form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
-                                    <Input
-                                        isRequired
-                                        label="邮箱"
-                                        name="email"
-                                        placeholder="请输入邮箱地址"
-                                        variant="bordered"
-                                        labelPlacement="outside"
-                                    />
-                                    <Input
-                                        isRequired
-                                        label="密码"
-                                        name="password"
-                                        placeholder="请输入密码"
-                                        variant="bordered"
-                                        labelPlacement="outside"
-                                    />
-                                    <Input
-                                        label="登录站点"
-                                        name="loginSite"
-                                        placeholder="自动根据邮箱后缀填充"
-                                        variant="bordered"
-                                        labelPlacement="outside"
-                                    />
-                                    <Input
-                                        label="关联邮箱"
-                                        name="linkEmail"
-                                        placeholder="关联的其他邮箱"
-                                        variant="bordered"
-                                        labelPlacement="outside"
-                                    />
-                                    <Input
-                                        label="备注"
-                                        name="remark"
-                                        placeholder="备注信息"
-                                        variant="bordered"
-                                        labelPlacement="outside"
-                                    />
-                                </Form>
-                            </ModalBody>
-                            <ModalFooter>
-                                <Button color="primary" size="sm" onPress={() => handleSubmit()}>
-                                    保存
-                                </Button>
-                                <Button color="danger" size="sm" variant="light" onPress={onClose}>
-                                    取消
-                                </Button>
-                            </ModalFooter>
-                        </>
-                    )}
-                </ModalContent>
-            </Modal>
+            <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+                <DialogContent className="sm:max-w-[600px]">
+                    <DialogHeader>
+                        <DialogTitle>{isEdit ? "编辑邮箱" : "添加邮箱"}</DialogTitle>
+                    </DialogHeader>
+                    <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="tp-email">邮箱</Label>
+                            <Input
+                                id="tp-email"
+                                name="email"
+                                required
+                                placeholder="请输入邮箱地址"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="tp-password">密码</Label>
+                            <Input
+                                id="tp-password"
+                                name="password"
+                                required
+                                placeholder="请输入密码"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="tp-site">登录站点</Label>
+                            <Input
+                                id="tp-site"
+                                name="login_site"
+                                placeholder="自动根据邮箱后缀填充"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="tp-link">关联邮箱</Label>
+                            <Input
+                                id="tp-link"
+                                name="link_email"
+                                placeholder="关联的其他邮箱"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="tp-remark">备注</Label>
+                            <Input
+                                id="tp-remark"
+                                name="remark"
+                                placeholder="备注信息"
+                            />
+                        </div>
+                    </form>
+                    <DialogFooter>
+                        <Button size="sm" onClick={() => handleSubmit()}>
+                            保存
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setModalOpen(false)}>
+                            取消
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

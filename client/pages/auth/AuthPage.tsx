@@ -1,9 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Button, Input, Link, Form, addToast } from "@heroui/react";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { BrandIcon } from "../../components/logo";
+import { ThemeToggle } from "../../components/theme-toggle";
 import { AuthRouter } from "../../api/instance";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "../../methods/notify";
 
 export default function Component() {
     const navigate = useNavigate();
@@ -21,16 +26,17 @@ export default function Component() {
     }, []);
 
     // Handle verification token from email link
-    if (token) {
+    useEffect(() => {
+        if (!token) return;
         AuthRouter.verify({ token }, (res: any) => {
             if (res.success) {
-                addToast({ title: "邮箱验证成功，请登录", color: "success" });
+                toast({ title: "邮箱验证成功，请登录", color: "success" });
                 navigate("/auth");
             } else {
-                addToast({ title: res.message || "验证失败", color: "danger" });
+                toast({ title: res.message || "验证失败", color: "danger" });
             }
         });
-    }
+    }, [token]);
 
     const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -39,12 +45,13 @@ export default function Component() {
         window.addEventListener("login", async (e: any) => {
             const loginResult = e.detail;
             if (loginResult.success && loginResult.data?.token) {
-                addToast({ title: "登录成功", color: "success" });
+                toast({ title: "登录成功", color: "success" });
                 localStorage.setItem("token", loginResult.data.token);
+                localStorage.setItem("login_email", email.toString());
                 await new Promise(r => setTimeout(r, 500));
                 navigate("/inbox");
             } else {
-                addToast({ title: loginResult.message || "登录失败，请检查密码", color: "danger" });
+                toast({ title: loginResult.message || "登录失败，请检查密码", color: "danger" });
             }
         }, { once: true });
     };
@@ -56,105 +63,118 @@ export default function Component() {
         window.addEventListener("register", async (e: any) => {
             const res = e.detail;
             if (res.success && res.data?.needs_verification) {
-                addToast({ title: "注册成功，请查看邮箱完成验证", color: "success" });
+                toast({ title: "注册成功，请查看邮箱完成验证", color: "success" });
                 setIsRegister(false);
             } else {
-                addToast({ title: res.message || "注册失败，邮箱可能已存在", color: "danger" });
+                toast({ title: res.message || "注册失败，邮箱可能已存在", color: "danger" });
             }
         }, { once: true });
     };
 
     return (
-        <div className="flex h-full w-full items-center justify-center">
-            <div className="rounded-large flex w-full max-w-sm flex-col gap-4 px-8 pt-[20vh]">
-                <p className="pb-4 text-left text-3xl font-semibold">
-                    <span aria-label="emoji" className="mr-4" role="emoji">
-                        📮
-                    </span>
+        <div className="bg-background relative flex min-h-screen items-center justify-center px-4">
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+                <ThemeToggle />
+            </div>
+            <div className="flex w-full max-w-sm flex-col gap-6">
+                <div className="flex items-center gap-3 text-3xl font-semibold tracking-tight">
+                    <BrandIcon className="size-9" />
                     多邮箱系统
-                </p>
+                </div>
 
                 {!isRegister ? (
                     <>
                         {/* 登录表单 */}
-                        <Form key="login" className="flex flex-col gap-4" validationBehavior="native" onSubmit={handleLogin}>
-                            <Input
-                                isRequired
-                                label="邮箱"
-                                labelPlacement="outside"
-                                name="email"
-                                placeholder="请输入邮箱"
-                                type="email"
-                                variant="bordered"
-                            />
-                            <Input
-                                isRequired
-                                label="密码"
-                                labelPlacement="outside"
-                                name="password"
-                                placeholder="请输入密码"
-                                type="password"
-                                variant="bordered"
-                            />
-                            <div className="flex w-full items-center justify-end px-1 py-2">
-                                <Link className="text-default-500 cursor-pointer" size="sm" onClick={
-                                    () => addToast({ title: "请联系管理员🙁", color: "danger" })
-                                }>
-                                    忘记密码？
-                                </Link>
+                        <form className="flex flex-col gap-4" onSubmit={handleLogin}>
+                            <div className="flex flex-col gap-2">
+                                <Label htmlFor="email">邮箱</Label>
+                                <Input
+                                    id="email"
+                                    name="email"
+                                    required
+                                    type="email"
+                                    placeholder="请输入邮箱"
+                                />
                             </div>
-                            <Button className="w-full" color="primary" type="submit">
+                            <div className="flex flex-col gap-2">
+                                <Label htmlFor="password">密码</Label>
+                                <Input
+                                    id="password"
+                                    name="password"
+                                    required
+                                    type="password"
+                                    placeholder="请输入密码"
+                                />
+                            </div>
+                            <div
+                                className="text-muted-foreground flex w-full cursor-pointer justify-end text-sm hover:text-foreground"
+                                onClick={() =>
+                                    toast({ title: "请联系管理员🙁", color: "danger" })
+                                }
+                            >
+                                忘记密码？
+                            </div>
+                            <Button type="submit" className="w-full">
                                 登录
                             </Button>
-                        </Form>
+                        </form>
                         {allowRegister && (
-                            <p className="text-center text-sm text-gray-500">
+                            <p className="text-muted-foreground text-center text-sm">
                                 还没有账号？{" "}
-                                <Link className="cursor-pointer text-sm" size="sm" onClick={() => setIsRegister(true)}>
+                                <span
+                                    className="text-primary cursor-pointer text-sm hover:underline"
+                                    onClick={() => setIsRegister(true)}
+                                >
                                     立即注册
-                                </Link>
+                                </span>
                             </p>
                         )}
                     </>
                 ) : (
                     <>
                         {/* 注册表单 */}
-                        <Form key="register" className="flex flex-col gap-4" validationBehavior="native" onSubmit={handleRegister}>
-                            <Input
-                                isRequired
-                                label="姓名"
-                                labelPlacement="outside"
-                                name="name"
-                                placeholder="请输入姓名"
-                                variant="bordered"
-                            />
-                            <Input
-                                isRequired
-                                label="邮箱"
-                                labelPlacement="outside"
-                                name="email"
-                                placeholder="请输入邮箱"
-                                type="email"
-                                variant="bordered"
-                            />
-                            <Input
-                                isRequired
-                                label="密码"
-                                labelPlacement="outside"
-                                name="password"
-                                placeholder="请输入密码"
-                                type="password"
-                                variant="bordered"
-                            />
-                            <Button className="w-full" color="primary" type="submit">
+                        <form className="flex flex-col gap-4" onSubmit={handleRegister}>
+                            <div className="flex flex-col gap-2">
+                                <Label htmlFor="name">姓名</Label>
+                                <Input
+                                    id="name"
+                                    name="name"
+                                    required
+                                    placeholder="请输入姓名"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <Label htmlFor="reg-email">邮箱</Label>
+                                <Input
+                                    id="reg-email"
+                                    name="email"
+                                    required
+                                    type="email"
+                                    placeholder="请输入邮箱"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <Label htmlFor="reg-password">密码</Label>
+                                <Input
+                                    id="reg-password"
+                                    name="password"
+                                    required
+                                    type="password"
+                                    placeholder="请输入密码"
+                                />
+                            </div>
+                            <Button type="submit" className="w-full">
                                 注册
                             </Button>
-                        </Form>
-                        <p className="text-center text-sm text-gray-500">
+                        </form>
+                        <p className="text-muted-foreground text-center text-sm">
                             已有账号？{" "}
-                            <Link className="cursor-pointer text-sm" size="sm" onClick={() => setIsRegister(false)}>
+                            <span
+                                className="text-primary cursor-pointer text-sm hover:underline"
+                                onClick={() => setIsRegister(false)}
+                            >
                                 返回登录
-                            </Link>
+                            </span>
                         </p>
                     </>
                 )}

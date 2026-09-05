@@ -1,7 +1,31 @@
-import { Header } from "../../components/header/Header";
 import { useEffect, useState } from "react";
 import { SafetyRouter } from "../../api/instance";
-import { Button, Input, Tabs, Tab, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Select, SelectItem } from "@heroui/react";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "../../components/ui/table";
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "../../components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "../../components/ui/select";
+import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
 
 const TYPES = [
@@ -10,16 +34,13 @@ const TYPES = [
     { key: "whitelist", label: "白名单" },
 ] as const;
 
-const TYPE_LABELS: Record<string, string> = {
-    blacklist: "黑名单",
-    sensitive_word: "敏感词",
-    whitelist: "白名单",
-};
+type TypeKey = (typeof TYPES)[number]["key"];
 
 const SafetyPage = () => {
     const [entries, setEntries] = useState<any[]>([]);
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingEntry, setEditingEntry] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState<TypeKey>("blacklist");
 
     // form state
     const [formType, setFormType] = useState("blacklist");
@@ -79,115 +100,134 @@ const SafetyPage = () => {
         });
     }
 
-    const activeTab = "blacklist";
+    const filtered = entries.filter((e: any) => e.type === activeTab);
+    const activeLabel = TYPES.find((t) => t.key === activeTab)?.label || "";
 
     return (
-        <div className="max-w-screen">
-            <Header name="安全设置" />
-            <div className="w-full flex flex-col flex-wrap px-[5vw] pt-6">
-                <div className="w-full flex flex-row justify-end items-center mb-4">
-                    <Button
-                        onClick={openCreate}
-                        color="primary" variant="bordered" className="text-primary"
-                    >
-                        添加规则
-                    </Button>
-                </div>
-
-                <Tabs
-                    aria-label="安全设置"
-                    onSelectionChange={() => {}}
-                >
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+            <p className="text-muted-foreground text-sm">
+                规则在收信时评估：命中黑名单或敏感词的邮件会标记为「已拦截」并跳过转发（仍会入库，可在收件箱用盾牌按钮筛选查看）；白名单发件人优先放行。修改后立即生效。
+            </p>
+            <div className="flex flex-row items-center justify-between">
+                <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">
                     {TYPES.map(({ key, label }) => {
-                        const filtered = entries.filter((e: any) => e.type === key);
+                        const count = entries.filter((e: any) => e.type === key).length;
                         return (
-                            <Tab key={key} title={`${label} (${filtered.length})`}>
-                                <div className="mt-4">
-                                    {filtered.length === 0 ? (
-                                        <div className="text-gray-400 text-center py-8">暂无{label}规则</div>
-                                    ) : (
-                                        <Table aria-label={label} removeWrapper>
-                                            <TableHeader>
-                                                <TableColumn>规则内容</TableColumn>
-                                                <TableColumn width={200}>备注</TableColumn>
-                                                <TableColumn width={120}>操作</TableColumn>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {filtered.map((item: any) => (
-                                                    <TableRow key={item.id}>
-                                                        <TableCell>{item.value}</TableCell>
-                                                        <TableCell>{item.note || "-"}</TableCell>
-                                                        <TableCell>
-                                                            <div className="flex flex-row gap-2">
-                                                                <Button
-                                                                    size="sm" variant="light" color="primary"
-                                                                    onClick={() => openEdit(item)}
-                                                                >
-                                                                    编辑
-                                                                </Button>
-                                                                <Button
-                                                                    size="sm" variant="light" color="danger"
-                                                                    onClick={() => submitDelete(item)}
-                                                                >
-                                                                    删除
-                                                                </Button>
-                                                            </div>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    )}
-                                </div>
-                            </Tab>
+                            <button
+                                key={key}
+                                onClick={() => setActiveTab(key)}
+                                className={cn(
+                                    "inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-all",
+                                    activeTab === key
+                                        ? "bg-background text-foreground shadow-xs"
+                                        : "hover:text-foreground"
+                                )}
+                            >
+                                {label} ({count})
+                            </button>
                         );
                     })}
-                </Tabs>
+                </div>
+                <Button variant="outline" onClick={openCreate}>
+                    添加规则
+                </Button>
             </div>
 
-            <Modal isOpen={isModalOpen} onOpenChange={setModalOpen}>
-                <ModalContent>
-                    {(onClose) => (
-                        <>
-                            <ModalHeader>{editingEntry ? "编辑规则" : "添加规则"}</ModalHeader>
-                            <ModalBody className="flex flex-col gap-4">
-                                <Select
-                                    label="规则类型"
-                                    selectedKeys={[formType]}
-                                    onSelectionChange={(keys) => {
-                                        const v = Array.from(keys)[0] as string;
-                                        if (v) setFormType(v);
-                                    }}
-                                >
-                                    {TYPES.map(t => (
-                                        <SelectItem key={t.key}>{t.label}</SelectItem>
+            <div className="rounded-lg border bg-card shadow-xs">
+                <Table className="table-fixed">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>规则内容</TableHead>
+                            <TableHead className="w-56">备注</TableHead>
+                            <TableHead className="w-32 text-right">操作</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filtered.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                                    暂无{activeLabel}规则
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            filtered.map((item: any) => (
+                                <TableRow key={item.id}>
+                                    <TableCell>
+                                        <div className="truncate" title={item.value}>{item.value}</div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="truncate" title={item.note || undefined}>{item.note || "-"}</div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="flex flex-row justify-end gap-2">
+                                            <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
+                                                编辑
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-destructive hover:text-destructive"
+                                                onClick={() => submitDelete(item)}
+                                            >
+                                                删除
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+
+            <Dialog open={isModalOpen} onOpenChange={setModalOpen}>
+                <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle>{editingEntry ? "编辑规则" : "添加规则"}</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-2">
+                            <Label>规则类型</Label>
+                            <Select value={formType} onValueChange={setFormType}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="选择类型" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {TYPES.map((t) => (
+                                        <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
                                     ))}
-                                </Select>
-                                <Input
-                                    label="规则内容"
-                                    placeholder={
-                                        formType === "sensitive_word"
-                                            ? "敏感词"
-                                            : "邮箱地址，支持 * 通配符"
-                                    }
-                                    value={formValue}
-                                    onValueChange={setFormValue}
-                                />
-                                <Input
-                                    label="备注（可选）"
-                                    placeholder="备注说明"
-                                    value={formNote}
-                                    onValueChange={setFormNote}
-                                />
-                            </ModalBody>
-                            <ModalFooter>
-                                <Button variant="light" onPress={onClose}>取消</Button>
-                                <Button color="primary" onPress={submitSave}>保存</Button>
-                            </ModalFooter>
-                        </>
-                    )}
-                </ModalContent>
-            </Modal>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="safety-value">规则内容</Label>
+                            <Input
+                                id="safety-value"
+                                placeholder={
+                                    formType === "sensitive_word"
+                                        ? "敏感词"
+                                        : "邮箱地址，支持 * 通配符"
+                                }
+                                value={formValue}
+                                onChange={(e) => setFormValue(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="safety-note">备注（可选）</Label>
+                            <Input
+                                id="safety-note"
+                                placeholder="备注说明"
+                                value={formNote}
+                                onChange={(e) => setFormNote(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setModalOpen(false)}>取消</Button>
+                        <Button onClick={submitSave}>保存</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

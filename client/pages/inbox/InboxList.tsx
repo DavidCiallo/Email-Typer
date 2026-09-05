@@ -1,74 +1,121 @@
-import { Button, Card, CardBody, Chip } from "@heroui/react";
-import { keyLables } from "./InboxEnums";
-import { formatEmail } from "../../methods/format";
-
+import { formatEmail, blockLabel, sourceLabel } from "../../methods/format";
+import { extractCodes } from "../../methods/verifycode";
+import { copytext } from "../../methods/text";
+import { toast } from "../../methods/notify";
+import { Card, CardContent } from "../../components/ui/card";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Archive, Paperclip } from "lucide-react";
 
 const InboxList = (params: {
     emailList: Array<any>,
-    setEmailContentOpen: Function,
-    setFocusEmail: Function
+    newIds: Set<string>,
+    onOpen: (email: any) => void,
+    onArchive: (id: string) => void,
 }) => {
-    const { emailList, setEmailContentOpen, setFocusEmail } = params;
+    const { emailList, newIds, onOpen, onArchive } = params;
+
+    function copyCode(e: React.MouseEvent, code: string) {
+        e.stopPropagation();
+        copytext(code);
+        toast({ title: `验证码 ${code} 已复制`, color: "success" });
+    }
+
     return (
-        <div id="email-list" className="flex flex-col">
-            {emailList.map((email, index) => {
-                return (<Card key={index} className="w-full max-w-full my-1">
-                    <CardBody className="max-w-[90vw] mx-auto">
-                        <div className="flex flex-row justify-end text-xs text-gray-400 h-[15px] mb-[-10px]">
-                            {new Date(Number(email.time)).toLocaleDateString()?.slice(5) + " "}
-                            {new Date(Number(email.time)).toLocaleTimeString()?.slice(0, -3)}
-                        </div>
-                        <div className="flex flex-col md:flex-row md:justify-start md:items-center">
-                            <div className="flex flex-row items-center mt-1 overflow-x-hidden">
-                                <Chip color="primary" variant="bordered" className="text-primary">
-                                    <div className="w-8 text-center">发件</div>
-                                </Chip>
-                                <div className="text-sm ml-1">
-                                    <span className="mr-1 whitespace-nowrap">
-                                        {formatEmail(email.from).name}
-                                    </span>
-                                    <span className="text-gray-500 whitespace-nowrap">
-                                        ({formatEmail(email.from).email})
-                                    </span>
-                                </div>
+        <div id="email-list" className="flex flex-col gap-2">
+            {emailList.map((email) => {
+                const codes = extractCodes(email.text, email.html);
+                return (
+                    <Card
+                        key={email.id}
+                        className="w-full cursor-pointer py-3 transition-colors hover:bg-muted/40"
+                        onClick={() => onOpen(email)}
+                    >
+                        <CardContent className="flex flex-col gap-2 px-3">
+                            <div className="flex flex-row justify-end text-xs text-muted-foreground">
+                                {newIds.has(email.id) && (
+                                    <span className="text-primary mr-auto font-medium">新邮件</span>
+                                )}
+                                {new Date(Number(email.time)).toLocaleDateString()?.slice(5) + " "}
+                                {new Date(Number(email.time)).toLocaleTimeString()?.slice(0, -3)}
                             </div>
-                            <div className="flex flex-row items-center mt-1 md:ml-5 overflow-x-hidden">
-                                <Chip color="primary" variant="bordered" className="text-primary">
-                                    <div className="w-8 text-center">收件</div>
-                                </Chip>
-                                <div className="text-sm ml-1">
-                                    <span className="mr-1 whitespace-nowrap">
-                                        {formatEmail(email.to).name}
-                                    </span>
-                                    {formatEmail(email.to).email && (
-                                        <span className="text-gray-500 whitespace-nowrap">
-                                            ({formatEmail(email.to).email})
-                                        </span>
+                            <div className="flex items-center gap-1 overflow-x-hidden">
+                                <Badge variant="outline" className="shrink-0">发件</Badge>
+                                <span className="truncate text-sm">
+                                    {formatEmail(email.from).name}
+                                    {formatEmail(email.from).email && (
+                                        <span className="text-muted-foreground"> ({formatEmail(email.from).email})</span>
                                     )}
-                                </div>
+                                </span>
                             </div>
-                            <div className="flex flex-row justify-between items-center mt-1 md:ml-5">
-                                <div className="flex flex-row items-center">
-                                    <Chip color="primary" variant="bordered" className="text-primary">
-                                        <div className="w-8 text-center">主题</div>
-                                    </Chip>
-                                    <span className="text-sm ml-1">{email.subject?.slice(0, 32)}</span>
+                            <div className="flex items-center gap-1 overflow-x-hidden">
+                                <Badge variant="outline" className="shrink-0">收件</Badge>
+                                <span className="truncate text-sm">
+                                    {formatEmail(email.to).name}
+                                    {formatEmail(email.to).email && (
+                                        <span className="text-muted-foreground"> ({formatEmail(email.to).email})</span>
+                                    )}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1 overflow-x-hidden">
+                                <Badge variant="outline" className="shrink-0">主题</Badge>
+                                {email.source && email.source !== "maildir" && (
+                                    <Badge variant="secondary" className="shrink-0" title={`来源：${sourceLabel(email.source)}`}>
+                                        {sourceLabel(email.source)}
+                                    </Badge>
+                                )}
+                                {email.blocked === 1 && (
+                                    <Badge variant="destructive" className="shrink-0" title={`命中规则：${email.block_rule}`}>
+                                        拦截·{blockLabel(email.blocked_by)}
+                                    </Badge>
+                                )}
+                                <span className="truncate text-sm">{email.subject?.slice(0, 32)}</span>
+                                {!!email.has_attachments && (
+                                    <Paperclip className="text-muted-foreground size-3.5 shrink-0" aria-label="含附件" />
+                                )}
+                            </div>
+                            {codes.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                    {codes.map((code) => (
+                                        <button
+                                            key={code}
+                                            title="点击复制验证码"
+                                            className="bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer rounded px-1.5 py-0.5 font-mono text-xs font-semibold tracking-wider transition-colors"
+                                            onClick={(e) => copyCode(e, code)}
+                                        >
+                                            {code}
+                                        </button>
+                                    ))}
                                 </div>
+                            )}
+                            <div className="mt-1 flex justify-end gap-2">
                                 <Button
-                                    size="sm" color="primary"
-                                    variant="bordered"
-                                    className="h-7 text-primary"
-                                    onClick={() => { setEmailContentOpen(true); setFocusEmail(email) }}
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    onClick={(e) => { e.stopPropagation(); onOpen(email); }}
                                 >
                                     查看
                                 </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0 text-destructive hover:text-destructive"
+                                    onClick={(e) => { e.stopPropagation(); onArchive(email.id); }}
+                                >
+                                    <Archive className="size-3.5" />
+                                    归档
+                                </Button>
                             </div>
-                        </div>
-                    </CardBody>
-                </Card>)
+                        </CardContent>
+                    </Card>
+                );
             })}
+            {emailList.length === 0 && (
+                <div className="text-muted-foreground py-8 text-center">暂无邮件</div>
+            )}
         </div>
-    )
-}
+    );
+};
 
 export default InboxList;

@@ -1,7 +1,7 @@
-import { hashGenerate } from "../methods/crypto";
 import { AccountService } from "../modules/account/account.service";
 import { SettingsService } from "../modules/settings/settings.service";
 import { startEmailWatcher } from "../modules/email/email.service";
+import { MailboxSyncWorker } from "../modules/mailbox/sync.worker";
 import { config } from "dotenv";
 config();
 
@@ -27,4 +27,7 @@ export async function initialize() {
     if (maildirPath) {
         startEmailWatcher(maildirPath);
     }
+
+    // Schedule IMAP sync workers for configured external mailboxes
+    await MailboxSyncWorker.startAll();
 }
