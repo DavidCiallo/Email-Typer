@@ -31,9 +31,11 @@ interface SendEmailParams {
     to: string;
     subject: string;
     html: string;
+    /** optional Reply-To header — used by strategy forwards so replies reach the original sender */
+    replyTo?: string;
 }
 
-export async function sendEmail({ from, to, subject, html }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ from, to, subject, html, replyTo }: SendEmailParams): Promise<boolean> {
     // Match API key by from domain: "resend_api_keys" stores "domain1:key1,domain2:key2"
     let api_key = SettingsService.get("resend_api_key");
     const keyMap = SettingsService.get("resend_api_keys");
@@ -59,7 +61,7 @@ export async function sendEmail({ from, to, subject, html }: SendEmailParams): P
                 "Authorization": `Bearer ${api_key}`,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ from, to, subject, html }),
+            body: JSON.stringify(replyTo ? { from, to, subject, html, reply_to: replyTo } : { from, to, subject, html }),
         });
 
         if (!response.ok) {

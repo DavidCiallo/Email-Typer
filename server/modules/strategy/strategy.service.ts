@@ -32,18 +32,23 @@ export class StrategyService {
     /**
      * Run matching and forwarding for a received email.
      */
-    static async matchAndForward(email: { from: string; to: string; subject: string; html?: string; text?: string }): Promise<void> {
+    static async matchAndForward(email: { from: string; to: string; subject: string; html?: string; text?: string; time?: number }): Promise<void> {
         const strategy = await StrategyService.matchStrategy(email.from, email.to, email.subject);
         if (!strategy || !strategy.forward_to) return;
 
         const { sendEmail } = await import("../email/email.service");
-        const content = email.html || email.text || "";
         const from = StrategyService.resolveForwardFrom(email.from, strategy.forward_to);
+        // domain rewriting loses the original sender — surface it in the body
+        // block and keep a reply path back to the real author
+        const replyTo = bareAddress(email.from);
         await sendEmail({
             from,
             to: strategy.forward_to,
             subject: `Fwd: ${email.subject}`,
-            html: content,
+            html: email.html
+                ? forwardPreambleHtml(email.from, email.to) + email.html
+                : forwardPreamblePlain(email.from, email.to) + (email.text || ""),
+            replyTo: replyTo || undefined,
         });
         console.log(`[Strategy] Forwarded email from ${from} to ${strategy.forward_to}`);
     }
@@ -110,4 +115,23 @@ function matchGlob(value: string, pattern: string): boolean {
     } catch {
         return value.toLowerCase().includes(pattern.toLowerCase());
     }
+}
+
+function escapeHtml(value: string): string {
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Pull the bare address out of a possibly "Name <a@b>" header value. */
+function bareAddress(value: string): string {
+    const m = (value || "").match(/[\w.+-]+@[\w.-]+/);
+    return m ? m[0] : "";
+}
+
+/** Small muted byline at the top of forwarded mail — labeled provenance in two unobtrusive lines. */
+function forwardPreambleHtml(from: string, to: string): string {
+    return `<div style="margin:0 0 12px;font:12px/1.6 sans-serif;color:#999;">原发件人：${escapeHtml(from)}<br>原收件人：${escapeHtml(to)}</div><hr style="border:none;border-top:1px solid #eee;margin:0 0 12px;">`;
+}
+
+function forwardPreamblePlain(from: string, to: string): string {
+    return `原发件人：${from}\n原收件人：${to}\n\n`;
 }
