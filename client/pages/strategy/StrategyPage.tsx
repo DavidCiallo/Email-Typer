@@ -3,18 +3,15 @@ import { StrategyRouter } from "../../api/instance";
 import StrategyFormModal from "./StrategyFormModal";
 import StrategyList from "./StrategyList";
 import StrategyTable from "./StrategyTable";
-import StrategyTester from "./StrategyTester";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { FlaskConical } from "lucide-react";
 import { toast } from "../../methods/notify";
 
 const StrategyPage = () => {
     const [strategyList, setStrategyList] = useState<any[]>([]);
     const [focusStrategy, setFocusStrategy] = useState<any | null>(null);
     const [isModalOpen, setModalOpen] = useState(false);
-    const [isTesterOpen, setTesterOpen] = useState(false);
 
     function refreshList() {
         StrategyRouter.list({}, (data: any) => {
@@ -71,15 +68,9 @@ const StrategyPage = () => {
                         onChange={(e) => localStorage.setItem("default_forward", e.target.value)}
                     />
                 </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={() => setTesterOpen(true)}>
-                        <FlaskConical className="size-4" />
-                        规则测试
-                    </Button>
-                    <Button onClick={openCreate} variant="outline">
-                        新建策略
-                    </Button>
-                </div>
+                <Button onClick={openCreate} variant="outline">
+                    新建策略
+                </Button>
             </div>
 
             <div className="hidden w-full md:block">
@@ -104,11 +95,6 @@ const StrategyPage = () => {
                 onOpenChange={(v) => { setModalOpen(v); if (!v) setFocusStrategy(null); }}
                 onSubmit={submitSave}
                 strategy={focusStrategy}
-            />
-            <StrategyTester
-                isOpen={isTesterOpen}
-                onOpenChange={setTesterOpen}
-                strategyList={strategyList}
             />
         </div>
     )
