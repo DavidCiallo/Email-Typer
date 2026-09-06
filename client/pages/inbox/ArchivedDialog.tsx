@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { ArchiveRestore, Loader2 } from "lucide-react";
 import {
     Dialog,
@@ -8,13 +9,15 @@ import {
 } from "../../components/ui/dialog";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
+import { Pagination } from "../../components/ui/pagination";
+import { EmailRouter } from "../../api/instance";
 import { formatEmail, blockLabel } from "../../methods/format";
+
+const PAGE_SIZE = 20;
 
 interface Props {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
-    list: any[];
-    loading: boolean;
     onRestore: (id: string) => void;
     onOpen: (email: any) => void;
 }
@@ -24,15 +27,76 @@ function formatTime(ts: number): string {
     return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
 }
 
-const ArchivedDialog = ({ isOpen, onOpenChange, list, loading, onRestore, onOpen }: Props) => {
+const ArchivedDialog = ({ isOpen, onOpenChange, onRestore, onOpen }: Props) => {
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [list, setList] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    // Prefetched pages so flipping to the next page renders instantly
+    const cacheRef = useRef(new Map<number, any>());
+    const inflightRef = useRef(new Set<number>());
+
+    function apply(result: any) {
+        setList(result.list || []);
+        setTotal(result.total || 0);
+        setLoading(false);
+    }
+
+    function prefetch(page: number) {
+        const next = page + 1;
+        if (cacheRef.current.has(next) || inflightRef.current.has(next)) return;
+        inflightRef.current.add(next);
+        EmailRouter.list({ archived: true, offset: next * PAGE_SIZE - PAGE_SIZE, limit: PAGE_SIZE }, (data: any) => {
+            inflightRef.current.delete(next);
+            cacheRef.current.set(next, data.data || data);
+        });
+    }
+
+    function fetchPage(p: number, { cache = true, silent = false } = {}) {
+        const cached = cacheRef.current.get(p);
+        if (cache && cached) {
+            apply(cached);
+            prefetch(p);
+            return;
+        }
+        if (inflightRef.current.has(p)) return;
+        if (!silent) setLoading(true);
+        inflightRef.current.add(p);
+        EmailRouter.list({ archived: true, offset: (p - 1) * PAGE_SIZE, limit: PAGE_SIZE }, (data: any) => {
+            inflightRef.current.delete(p);
+            const result = data.data || data;
+            cacheRef.current.set(p, result);
+            apply(result);
+            prefetch(p);
+        });
+    }
+
+    useEffect(() => {
+        if (isOpen) {
+            cacheRef.current.clear();
+            setPage(1);
+            fetchPage(1);
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen) fetchPage(page);
+    }, [page, isOpen]);
+
+    function handleRestore(e: React.MouseEvent, id: string) {
+        e.stopPropagation();
+        onRestore(id);
+        fetchPage(page, { cache: false });
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>已归档邮件</DialogTitle>
-                    <DialogDescription>
-                        共 {list.length} 封{list.length >= 100 ? "（仅显示最近 100 封）" : ""}，点击行可查看内容
-                    </DialogDescription>
+                    <DialogDescription>共 {total} 封，点击行可查看内容</DialogDescription>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto">
                     {loading ? (
@@ -79,7 +143,7 @@ const ArchivedDialog = ({ isOpen, onOpenChange, list, loading, onRestore, onOpen
                                         size="sm"
                                         variant="outline"
                                         className="shrink-0"
-                                        onClick={(e) => { e.stopPropagation(); onRestore(email.id); }}
+                                        onClick={(e) => handleRestore(e, email.id)}
                                     >
                                         <ArchiveRestore className="size-3.5" />
                                         恢复
@@ -89,6 +153,7 @@ const ArchivedDialog = ({ isOpen, onOpenChange, list, loading, onRestore, onOpen
                         </div>
                     )}
                 </div>
+                <Pagination page={page} total={totalPages} onChange={setPage} />
             </DialogContent>
         </Dialog>
     );

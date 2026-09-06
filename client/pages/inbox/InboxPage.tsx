@@ -39,8 +39,6 @@ const EmailPage = () => {
 
     // Archived emails live in a dialog, opened from a small toolbar button
     const [isArchivedOpen, setArchivedOpen] = useState(false);
-    const [archivedList, setArchivedList] = useState<any[]>([]);
-    const [archivedLoading, setArchivedLoading] = useState(false);
 
     const [refreshing, setRefreshing] = useState(false);
     const [newIds, setNewIds] = useState<Set<string>>(new Set());
@@ -57,8 +55,25 @@ const EmailPage = () => {
         });
     }
 
-    function renderEmail(data: any) {
-        const result = data.data || data;
+    // Prefetched pages keyed by "<filters>|<page>" — paging renders instantly
+    // from the cache while the next page is fetched in the background.
+    const pageCacheRef = useRef(new Map<string, any>());
+    const inflightRef = useRef(new Set<string>());
+    const filtersKeyRef = useRef<string | null>(null);
+
+    function listParams(page: number) {
+        const s = stateRef.current;
+        return {
+            offset: (page - 1) * PAGE_SIZE,
+            limit: PAGE_SIZE,
+            account_id: s.accountFilter !== "all" ? s.accountFilter : undefined,
+            q: s.search || undefined,
+            blocked: s.blockedOnly,
+            source: s.sourceFilter !== "all" ? s.sourceFilter : undefined,
+        };
+    }
+
+    function applyEmails(result: any) {
         const list = result.list || [];
         setTotal(result.total || 0);
         if (result.accounts) setAccounts(result.accounts);
@@ -80,38 +95,64 @@ const EmailPage = () => {
         setRefreshing(false);
     }
 
-    function queryEmails(overrides?: Partial<{ page: number; silent: boolean }>) {
-        const s = stateRef.current;
-        if (!overrides?.silent) setRefreshing(true);
-        EmailRouter.list(
-            {
-                offset: ((overrides?.page ?? s.page) - 1) * PAGE_SIZE,
-                limit: PAGE_SIZE,
-                account_id: s.accountFilter !== "all" ? s.accountFilter : undefined,
-                q: s.search || undefined,
-                blocked: s.blockedOnly || undefined,
-                source: s.sourceFilter !== "all" ? s.sourceFilter : undefined,
-            },
-            renderEmail,
-        );
+    function cacheResult(key: string, result: any) {
+        pageCacheRef.current.set(key, result);
+        if (pageCacheRef.current.size > 30) {
+            const oldest = pageCacheRef.current.keys().next().value;
+            if (oldest !== undefined) pageCacheRef.current.delete(oldest);
+        }
     }
 
-    function refreshArchived() {
-        setArchivedLoading(true);
-        EmailRouter.list({ archived: true, limit: 100 }, (data: any) => {
+    /** Fetch page+1 into the cache so clicking "next" needs no network round trip. */
+    function prefetchPage(page: number) {
+        const key = `${filterKey()}|${page + 1}`;
+        if (pageCacheRef.current.has(key) || inflightRef.current.has(key)) return;
+        inflightRef.current.add(key);
+        EmailRouter.list(listParams(page + 1), (data: any) => {
+            inflightRef.current.delete(key);
+            cacheResult(key, data.data || data);
+        });
+    }
+
+    function filterKey() {
+        const s = stateRef.current;
+        return `${s.search}|${s.accountFilter}|${s.sourceFilter}|${s.blockedOnly}`;
+    }
+
+    function queryEmails(overrides?: Partial<{ page: number; silent: boolean; cache: boolean }>) {
+        const page = overrides?.page ?? stateRef.current.page;
+        const key = `${filterKey()}|${page}`;
+        if (overrides?.cache !== false && pageCacheRef.current.has(key)) {
+            applyEmails(pageCacheRef.current.get(key));
+            setRefreshing(false);
+            prefetchPage(page);
+            return;
+        }
+        if (inflightRef.current.has(key)) return;
+        if (!overrides?.silent) setRefreshing(true);
+        inflightRef.current.add(key);
+        EmailRouter.list(listParams(page), (data: any) => {
+            inflightRef.current.delete(key);
             const result = data.data || data;
-            setArchivedList(result.list || []);
-            setArchivedLoading(false);
+            cacheResult(key, result);
+            applyEmails(result);
+            setRefreshing(false);
+            prefetchPage(page);
         });
     }
 
     function openArchived() {
         setArchivedOpen(true);
-        refreshArchived();
     }
 
-    // Refetch whenever page / search / filters change (also covers initial load)
+    // Refetch whenever page / search / filters change (also covers initial load).
+    // Search / filter switches invalidate prefetched pages; plain page moves reuse them.
     useEffect(() => {
+        const fk = filterKey();
+        if (filtersKeyRef.current !== fk) {
+            pageCacheRef.current.clear();
+            filtersKeyRef.current = fk;
+        }
         queryEmails({ page });
     }, [page, search, accountFilter, sourceFilter, blockedOnly]);
 
@@ -153,17 +194,16 @@ const EmailPage = () => {
             toast({
                 title: "已归档",
                 color: "primary",
-                action: { label: "撤销", onClick: () => EmailRouter.restore({ id }, () => queryEmails()) },
+                action: { label: "撤销", onClick: () => EmailRouter.restore({ id }, () => queryEmails({ cache: false })) },
             });
-            queryEmails();
+            queryEmails({ cache: false });
         });
     }
 
     function restoreEmail(id: string) {
         EmailRouter.restore({ id }, () => {
             toast({ title: "已恢复到收件箱", color: "success" });
-            refreshArchived();
-            queryEmails();
+            queryEmails({ cache: false });
         });
     }
 
@@ -239,7 +279,7 @@ const EmailPage = () => {
                         size="icon"
                         aria-label="刷新"
                         title="刷新"
-                        onClick={() => queryEmails()}
+                        onClick={() => queryEmails({ cache: false })}
                     >
                         <RotateCw className={cn("size-4", refreshing && "animate-spin")} />
                     </Button>
@@ -288,8 +328,6 @@ const EmailPage = () => {
             <ArchivedDialog
                 isOpen={isArchivedOpen}
                 onOpenChange={setArchivedOpen}
-                list={archivedList}
-                loading={archivedLoading}
                 onRestore={restoreEmail}
                 onOpen={openEmail}
             />
