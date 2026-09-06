@@ -30,7 +30,7 @@ export interface ProviderPreset {
 }
 
 const TYPE_LABEL: Record<string, string> = {
-    catchall: "本地地址（catch-all）",
+    catchall: "本地地址",
     api: "API 推送",
     imap: "IMAP 同步",
 };
@@ -217,9 +217,9 @@ const MailboxFormModal = (params: {
                             </SelectContent>
                         </Select>
                         <p className="text-muted-foreground text-xs">
-                            {formType === "catchall" && "本地域名下的一个地址，邮件即来即收，可提前占位绑定备注。"}
-                            {formType === "api" && "创建后获得独立 API Key，外部系统凭 Key 推送结构化邮件到该地址；地址可为任意外部域名（如 yeah.net）。"}
-                            {formType === "imap" && "通过 IMAP 授权码定时同步外部邮箱（网易 / QQ 等）的收件箱。"}
+                            {formType === "catchall" && "本地域名下的地址，邮件即来即收。"}
+                            {formType === "api" && "创建后获得专用 Key，外部系统用它把邮件推送到该地址；域名可任填（如 yeah.net）。"}
+                            {formType === "imap" && "凭服务商授权码，定时同步网易 / QQ 等外部邮箱的收件箱。"}
                         </p>
                     </div>
 
@@ -291,7 +291,7 @@ const MailboxFormModal = (params: {
                                 onChange={(e) => setFormAddress(e.target.value)}
                             />
                             <p className="text-muted-foreground text-xs">
-                                任意域名均可，该地址仅作推送命名空间。
+                                域名可任填，仅用于区分这批推送邮件的归属。
                             </p>
                         </div>
                     ) : formType === "catchall" ? (
@@ -317,10 +317,10 @@ const MailboxFormModal = (params: {
                                 </Select>
                             </div>
                             {domains.length === 0 && (
-                                <p className="text-destructive text-xs">尚未发现可接收的域名：请在系统设置里配置 allowed_domains，或确认 maildir 中已有对应域名的收信目录。</p>
+                                <p className="text-destructive text-xs">尚未发现可接收的域名：请先在「系统设置 → 注册与域名」里配置，或确认收信目录中已有该域名的邮件。</p>
                             )}
                             <p className="text-muted-foreground text-xs">
-                                仅可选系统实际接收的域名，名称任意。
+                                只能选择系统实际接收的域名，地址名可自定义。
                             </p>
                         </div>
                     ) : null}

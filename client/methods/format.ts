@@ -46,7 +46,7 @@ export function blockLabel(blockedBy?: string): string {
 export function sourceLabel(source?: string): string {
     if (source === "api") return "API";
     if (source === "imap") return "IMAP";
-    if (source === "receive") return "接口";
+    if (source === "receive") return "外部投递";
     return "收信";
 }
 
