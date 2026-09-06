@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { EmailRouter, StrategyRouter } from "../../api/instance";
+import { EmailRouter } from "../../api/instance";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Pagination } from "../../components/ui/pagination";
@@ -13,7 +13,6 @@ import {
 import { Archive, RotateCw, Search, ShieldAlert } from "lucide-react";
 import { cn } from "../../lib/utils";
 import EmailContentModal from "./InboxContent";
-import StrategyFormModal from "../strategy/StrategyFormModal";
 import ArchivedDialog from "./ArchivedDialog";
 import { toast } from "../../methods/notify";
 import InboxTable from "./InboxTable";
@@ -35,7 +34,6 @@ const EmailPage = () => {
 
     const [focusEmail, setFocusEmail] = useState<any | null>(null);
     const [isEmailContentOpen, setEmailContentOpen] = useState(false);
-    const [isStrategyOpen, setStrategyOpen] = useState(false);
 
     // Archived emails live in a dialog, opened from a small toolbar button
     const [isArchivedOpen, setArchivedOpen] = useState(false);
@@ -47,13 +45,6 @@ const EmailPage = () => {
     // Keep latest values accessible inside interval / ws handlers
     const stateRef = useRef({ search, accountFilter, sourceFilter, page, blockedOnly });
     stateRef.current = { search, accountFilter, sourceFilter, page, blockedOnly };
-
-    function submitAddStrategy(body: any) {
-        StrategyRouter.save({ strategy: body }, () => {
-            toast({ title: "添加成功", color: "primary" });
-            setStrategyOpen(false);
-        });
-    }
 
     // Prefetched pages keyed by "<filters>|<page>" — paging renders instantly
     // from the cache while the next page is fetched in the background.
@@ -283,9 +274,6 @@ const EmailPage = () => {
                     >
                         <RotateCw className={cn("size-4", refreshing && "animate-spin")} />
                     </Button>
-                    <Button variant="outline" onClick={() => setStrategyOpen(true)}>
-                        新建策略
-                    </Button>
                 </div>
             </div>
 
@@ -320,11 +308,6 @@ const EmailPage = () => {
             {focusEmail && (
                 <EmailContentModal email={focusEmail} isOpen={isEmailContentOpen} onOpenChange={setEmailContentOpen} />
             )}
-            <StrategyFormModal
-                isOpen={isStrategyOpen}
-                onOpenChange={setStrategyOpen}
-                onSubmit={submitAddStrategy}
-            />
             <ArchivedDialog
                 isOpen={isArchivedOpen}
                 onOpenChange={setArchivedOpen}

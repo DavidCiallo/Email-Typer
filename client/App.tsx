@@ -7,7 +7,6 @@ import InboxPage from './pages/inbox/InboxPage';
 import AuthPage from './pages/auth/AuthPage';
 import SenderPage from './pages/send/SendPage';
 import SafetyPage from './pages/safety/SafetyPage';
-import ThirdpartyPage from './pages/thirdparty/ThirdpartyPage';
 import SettingsPage from './pages/settings/SettingsPage';
 import MailboxPage from './pages/mailbox/MailboxPage';
 import { AdminLayout } from './components/admin/layout';
@@ -56,7 +55,6 @@ const App = () => {
             <Route path="/strategy" element={<StrategyPage />} />
             <Route path="/send" element={<SenderPage />} />
             <Route path="/safety" element={<SafetyPage />} />
-            <Route path="/thirdparty" element={<ThirdpartyPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

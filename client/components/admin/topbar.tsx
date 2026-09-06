@@ -11,7 +11,6 @@ const titleMap: Record<string, string> = {
     "/strategy": "邮箱策略",
     "/send": "发送邮件",
     "/safety": "安全设置",
-    "/thirdparty": "三方邮箱",
     "/settings": "系统设置",
 }
 
