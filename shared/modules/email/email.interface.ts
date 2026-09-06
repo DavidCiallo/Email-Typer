@@ -1,4 +1,5 @@
 import { BaseRequest, BaseResponse } from "../../lib/default/decorator";
+import { SendLogEntity } from "./send-log.entity";
 import { EmailEntity } from "./email.entity";
 
 export type EmailDTO = Pick<EmailEntity, "id" | "eid" | "from" | "to" | "subject" | "text" | "time" | "account_id" | "blocked" | "blocked_by" | "block_rule" | "message_id" | "source" | "mailbox_id"> & {
@@ -111,11 +112,71 @@ export class EmailSendRequest implements BaseRequest {
     }
 }
 
-export class EmailSendResponse implements BaseResponse<null> {
+export class EmailSendResponse implements BaseResponse<{ status: string }> {
+    public success: boolean;
+    public message: string;
+    public data?: { status: string };
+
+    constructor(origin: EmailSendResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+// Send history — outbound tasks (resend-sent immediately, or pending for an
+// external channel that reports back via send-log/update)
+export class SendLogListRequest implements BaseRequest {
+    public auth?: string;
+    public status?: string;
+    public limit?: number;
+    public offset?: number;
+
+    constructor(origin: Partial<SendLogListRequest>) {
+        origin.auth && (this.auth = origin.auth);
+        this.status = origin.status;
+        this.limit = origin.limit;
+        this.offset = origin.offset;
+    }
+    static self(unsafe: SendLogListRequest) {
+        return new SendLogListRequest(unsafe);
+    }
+}
+
+export class SendLogListResponse implements BaseResponse<{ list: SendLogEntity[]; total: number }> {
+    public success: boolean;
+    public message: string;
+    public data?: { list: SendLogEntity[]; total: number };
+
+    constructor(origin: SendLogListResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+export class SendLogUpdateRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+    /** "pending" | "sent" | "failed" */
+    public status: string;
+
+    constructor(origin: Partial<SendLogUpdateRequest>) {
+        if (!origin.id || !origin.status) throw new Error("id and status are required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+        this.status = origin.status;
+    }
+    static self(unsafe: SendLogUpdateRequest) {
+        return new SendLogUpdateRequest(unsafe);
+    }
+}
+
+export class SendLogUpdateResponse implements BaseResponse<null> {
     public success: boolean;
     public message: string;
 
-    constructor(origin: EmailSendResponse) {
+    constructor(origin: SendLogUpdateResponse) {
         this.success = origin.success;
         this.message = origin.message;
     }
@@ -224,7 +285,7 @@ export class EmailRestoreResponse implements BaseResponse<null> {
     }
 }
 
-// Push structured email via API (auth: per-mailbox api_key or the receive master key)
+// Push email via API (auth: the receive master key, sent as x-api-key)
 export interface EmailPushAttachment {
     filename: string;
     contentType?: string;
