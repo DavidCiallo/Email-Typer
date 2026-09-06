@@ -268,6 +268,8 @@ export interface ParsedEmail {
     message_id: string;
     source: string;
     mailbox_id: string;
+    /** carries our X-CFRS-Forwarded loop-guard stamp */
+    forwarded: boolean;
     account_id: string;
     attachments: ParsedAttachment[];
 }
@@ -398,6 +400,7 @@ export function parseRawEmail(raw: string | Uint8Array): ParsedEmail | null {
         const messageId = (headers["message-id"] || "").trim();
         const source = (headers["x-cfrs-source"] || "").trim() || "maildir";
         const mailboxId = (headers["x-cfrs-mailbox"] || "").trim();
+        const forwarded = !!(headers["x-cfrs-forwarded"] || "").trim();
 
         const dateStr = headers["date"] || "";
         let time = dateStr ? new Date(dateStr).getTime() : Date.now();
@@ -421,6 +424,7 @@ export function parseRawEmail(raw: string | Uint8Array): ParsedEmail | null {
             message_id: messageId,
             source,
             mailbox_id: mailboxId,
+            forwarded,
             account_id,
             attachments: out.attachments,
         };
