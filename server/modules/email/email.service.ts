@@ -269,6 +269,7 @@ export class EmailService {
         // Evaluate safety rules first — blocked mail is stored but never forwarded
         const verdict = await SafetyService.evaluate(
             parsed.from || "",
+            parsed.to || "",
             parsed.subject || "",
             parsed.html || "",
             parsed.text || "",
