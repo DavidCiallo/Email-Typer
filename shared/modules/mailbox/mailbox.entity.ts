@@ -18,7 +18,6 @@ export interface MailboxEntity extends BaseEntity {
     imap_tls: number;        // 1 = implicit TLS (993), 0 = plaintext/STARTTLS-less (dev only)
     sync_interval: number;   // poll interval in seconds; 0 = use global default
     credential: string;      // aes(JSON {user, password}) — imap only, never returned to the client
-    api_key: string;         // push auth key — api only ("mk_...")
     status: string;          // "active" | "disabled" | "error"
     forward_enabled: number; // 1 = imported mail (api/imap) also matches forward strategies; 0 = store only
     sync_error: string;      // last sync failure message

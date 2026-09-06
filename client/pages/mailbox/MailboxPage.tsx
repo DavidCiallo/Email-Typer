@@ -13,21 +13,13 @@ import {
     TableRow,
 } from "../../components/ui/table";
 import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "../../components/ui/dialog";
-import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
-import { copytext } from "../../methods/text";
-import { RefreshCw, KeyRound, Plus, Inbox, Search } from "lucide-react";
+import { RefreshCw, Plus, Inbox, Search } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
 
 const DERIVED_PAGE_SIZE = 10;
@@ -81,6 +73,13 @@ const MailboxPage = () => {
     const [derivedSearch, setDerivedSearch] = useState("");
     const [derivedPage, setDerivedPage] = useState(1);
 
+    const [domainFilter, setDomainFilter] = useState("all");
+    const domainList = useMemo(() => Array.from(new Set(boxes.map((b) => b.domain))).sort(), [boxes]);
+    const filteredBoxes = useMemo(
+        () => (domainFilter === "all" ? boxes : boxes.filter((b) => b.domain === domainFilter)),
+        [boxes, domainFilter],
+    );
+
     const filteredDerived = useMemo(() => {
         const q = derivedSearch.trim().toLowerCase();
         return q ? derived.filter((d) => d.address.toLowerCase().includes(q)) : derived;
@@ -90,7 +89,6 @@ const MailboxPage = () => {
 
     const [isFormOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<any | null>(null);
-    const [keyRow, setKeyRow] = useState<any | null>(null);
     const [syncingId, setSyncingId] = useState<string | null>(null);
     const [adopting, setAdopting] = useState<string | null>(null);
 
@@ -161,30 +159,6 @@ const MailboxPage = () => {
         );
     }
 
-    function regenerateKey() {
-        if (!keyRow) return;
-        MailboxRouter.regenerateKey({ id: keyRow.id }, (data: any) => {
-            const result = data?.data || data;
-            setKeyRow({ ...keyRow, api_key: result?.api_key || "" });
-            toast({ title: "已重新生成，旧 Key 立即失效", color: "success" });
-            refreshList();
-        });
-    }
-
-    const curlExample = keyRow
-        ? `# 结构化推送（服务端代为合成邮件）
-curl -X POST ${location.origin}/api/email/push \\
-  -H "x-api-key: ${keyRow.api_key}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"subject": "你好", "html": "<b>hello</b>"}'
-
-# 原始邮件透传（脚本已持有完整 .eml / RFC822 时）
-curl -X POST ${location.origin}/api/email/push \\
-  -H "x-api-key: ${keyRow.api_key}" \\
-  -H "Content-Type: message/rfc822" \\
-  --data-binary @mail.eml`
-        : "";
-
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
             <p className="text-muted-foreground text-sm">
@@ -224,6 +198,25 @@ curl -X POST ${location.origin}/api/email/push \\
             </div>
 
             {activeTab === "managed" ? (
+                <div className="flex flex-col gap-3">
+                {boxes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {[{ domain: "all", count: boxes.length }, ...domainList.map((d) => ({ domain: d, count: boxes.filter((b) => b.domain === d).length }))].map(({ domain, count }) => (
+                            <button
+                                key={domain}
+                                onClick={() => setDomainFilter(domain)}
+                                className={cn(
+                                    "rounded-full border px-3 py-1 text-xs transition-colors",
+                                    domainFilter === domain
+                                        ? "bg-foreground text-background border-transparent"
+                                        : "text-muted-foreground hover:text-foreground",
+                                )}
+                            >
+                                {domain === "all" ? `全部域名 (${count})` : `${domain} (${count})`}
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <div className="rounded-lg border bg-card shadow-xs">
                     <Table className="table-fixed min-w-[760px]">
                         <TableHeader>
@@ -237,14 +230,14 @@ curl -X POST ${location.origin}/api/email/push \\
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {boxes.length === 0 ? (
+                            {filteredBoxes.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={6} className="text-muted-foreground h-24 text-center">
                                         暂无邮箱，点击右上角「新建邮箱」创建
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                boxes.map((row) => (
+                                filteredBoxes.map((row) => (
                                     <TableRow key={row.id}>
                                         <TableCell>
                                             <div className="truncate" title={row.name}>{row.name}</div>
@@ -275,12 +268,6 @@ curl -X POST ${location.origin}/api/email/push \\
                                                         {syncingId === row.id ? "同步中" : "同步"}
                                                     </Button>
                                                 )}
-                                                {row.type === "api" && (
-                                                    <Button size="sm" variant="outline" onClick={() => setKeyRow(row)}>
-                                                        <KeyRound className="size-3.5" />
-                                                        API Key
-                                                    </Button>
-                                                )}
                                                 <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
                                                 <Button
                                                     size="sm"
@@ -297,6 +284,7 @@ curl -X POST ${location.origin}/api/email/push \\
                             )}
                         </TableBody>
                     </Table>
+                </div>
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
@@ -371,67 +359,9 @@ curl -X POST ${location.origin}/api/email/push \\
                 editing={editing}
                 domains={domains}
                 providers={providers}
-                onSaved={(row) => {
-                    refreshList();
-                    if (row?.type === "api" && row?.api_key && !editing) {
-                        setKeyRow(row);
-                    }
-                }}
+                onSaved={() => refreshList()}
             />
 
-            {/* API Key management */}
-            <Dialog open={!!keyRow} onOpenChange={(open) => !open && setKeyRow(null)}>
-                <DialogContent className="sm:max-w-[560px]">
-                    <DialogHeader>
-                        <DialogTitle>API Key — {keyRow?.address}</DialogTitle>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-3">
-                        <p className="text-muted-foreground text-sm">
-                            外部系统向 <code className="bg-muted rounded px-1">/api/email/push</code> 推送邮件时，请在{" "}
-                            <code className="bg-muted rounded px-1">x-api-key</code> 请求头中携带该 Key。收件地址固定为本邮箱。
-                        </p>
-                        <div className="bg-muted flex items-center gap-2 rounded-md px-3 py-2">
-                            <code className="flex-1 truncate font-mono text-sm">{keyRow?.api_key}</code>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                    copytext(keyRow.api_key);
-                                    toast({ title: "Key 已复制", color: "success" });
-                                }}
-                            >
-                                复制
-                            </Button>
-                        </div>
-                        <div>
-                            <p className="text-muted-foreground mb-1 text-xs font-medium">调用示例</p>
-                            <pre className="bg-muted max-h-48 overflow-auto rounded-md p-3 font-mono text-xs whitespace-pre-wrap">
-                                {curlExample}
-                            </pre>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="mt-1"
-                                onClick={() => {
-                                    copytext(curlExample);
-                                    toast({ title: "示例已复制", color: "success" });
-                                }}
-                            >
-                                复制示例
-                            </Button>
-                        </div>
-                        <p className="text-muted-foreground text-xs">
-                            推送支持附件（attachments 数组，base64）；带 message_id 可实现幂等重试；响应中会返回是否重复投递以及附件入库结果。
-                        </p>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" className="text-destructive hover:text-destructive" onClick={regenerateKey}>
-                            重新生成（旧 Key 失效）
-                        </Button>
-                        <Button variant="outline" onClick={() => setKeyRow(null)}>关闭</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

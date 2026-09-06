@@ -3,7 +3,6 @@ import {
     MailboxSaveRequest,
     MailboxDeleteRequest,
     MailboxAddressesRequest,
-    MailboxRegenerateKeyRequest,
     MailboxSyncRequest,
     MailboxTestRequest,
     MailboxProvidersRequest,
@@ -50,14 +49,6 @@ async function addresses(request: MailboxAddressesRequest) {
     request = MailboxAddressesRequest.self(request);
     await requireAdmin(request.auth);
     return await MailboxService.listAddresses();
-}
-
-async function regenerateKey(request: MailboxRegenerateKeyRequest) {
-    request = MailboxRegenerateKeyRequest.self(request);
-    await requireAdmin(request.auth);
-
-    const api_key = await MailboxService.regenerateKey(request.id);
-    return { api_key };
 }
 
 async function sync(request: MailboxSyncRequest) {
@@ -112,6 +103,6 @@ export const mailboxMount = {
     routes: mailboxRoutes,
     handlers: {
         list, save, delete: deleteMailbox, addresses,
-        regenerateKey, sync, test, providers,
+        sync, test, providers,
     },
 };

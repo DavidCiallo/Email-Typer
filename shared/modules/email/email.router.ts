@@ -8,6 +8,8 @@ import {
     EmailRestoreRequest, EmailRestoreResponse,
     EmailPushRequest, EmailPushResponse,
     EmailAttachmentRequest, EmailAttachmentResponse,
+    SendLogListRequest, SendLogListResponse,
+    SendLogUpdateRequest, SendLogUpdateResponse,
 } from "./email.interface";
 
 export const emailRoutes = {
@@ -21,5 +23,7 @@ export const emailRoutes = {
     delete:     { path: "/delete",     request: {} as EmailDeleteRequest,     response: {} as EmailDeleteResponse },
     restore:    { path: "/restore",    request: {} as EmailRestoreRequest,    response: {} as EmailRestoreResponse },
     push:       { path: "/push",       request: {} as EmailPushRequest,       response: {} as EmailPushResponse },
+    sendLogList:   { path: "/send-log/list",   request: {} as SendLogListRequest,   response: {} as SendLogListResponse },
+    sendLogUpdate: { path: "/send-log/update", request: {} as SendLogUpdateRequest, response: {} as SendLogUpdateResponse },
     attachment: { path: "/attachment", request: {} as EmailAttachmentRequest, response: {} as EmailAttachmentResponse },
 } as const;

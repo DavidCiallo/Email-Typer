@@ -5,7 +5,7 @@ export type MailboxDTO = Pick<
     MailboxEntity,
     | "id" | "name" | "type" | "address" | "domain" | "local_part"
     | "provider" | "imap_host" | "imap_port" | "imap_tls" | "sync_interval"
-    | "api_key" | "status" | "forward_enabled" | "sync_error" | "last_sync_time" | "note"
+    | "status" | "forward_enabled" | "sync_error" | "last_sync_time" | "note"
 > & {
     has_credential: boolean;
 };
@@ -156,20 +156,6 @@ export class MailboxAddressesResponse implements BaseResponse<{ declared: Mailbo
 }
 
 // Regenerate the push API key
-export class MailboxRegenerateKeyRequest implements BaseRequest {
-    public auth?: string;
-    public id: string;
-
-    constructor(origin: Partial<MailboxRegenerateKeyRequest>) {
-        if (!origin.id) throw new Error("Mailbox id is required");
-        origin.auth && (this.auth = origin.auth);
-        this.id = origin.id;
-    }
-    static self(unsafe: any) {
-        return new MailboxRegenerateKeyRequest(unsafe);
-    }
-}
-
 export class MailboxRegenerateKeyResponse implements BaseResponse<{ api_key: string }> {
     public success: boolean;
     public message: string;

@@ -10,10 +10,13 @@ import {
     EmailRestoreRequest,
     EmailPushRequest,
     EmailAttachmentRequest,
+    SendLogListRequest,
+    SendLogUpdateRequest,
 } from "../../../shared/modules/email/email.interface";
 import { emailRoutes } from "../../../shared/modules/email/email.router";
 import { SettingsService } from "../settings/settings.service";
 import { EmailService, sendEmail, maildirRoot } from "./email.service";
+import { SendLogService } from "./send-log.service";
 import { MailboxService } from "../mailbox/mailbox.service";
 import { composeRawEmail, parseRawEmail, ComposeAttachment } from "../../lib/mime";
 import { getDataDir } from "../../lib/repository";
@@ -112,8 +115,47 @@ async function send(request: EmailSendRequest) {
         }
     }
 
-    const result = await sendEmail({ from, to, subject, html });
-    if (!result) throw "Failed to send email";
+    // Every send attempt is logged. Domains with a Resend key go out
+    // immediately (sent / failed); the rest stay pending as a task for an
+    // external channel, which completes them via send-log/update.
+    const channel = SendLogService.resolveResendKey(from) ? "resend" : "external";
+    const log = await SendLogService.create({ from, to, subject, html, channel });
+
+    if (channel === "resend") {
+        const ok = await sendEmail({ from, to, subject, html });
+        await SendLogService.setStatus(log.id, ok ? "sent" : "failed", ok ? "" : "Resend send failed");
+        if (!ok) throw "Failed to send email";
+        return { status: "sent" };
+    }
+    return { status: "pending" };
+}
+
+// Machine key accepted alongside login tokens: mount maps the x-api-key
+// header onto `auth`, so external scripts reuse EMAIL_RECEIVE_API_KEY here.
+function authedForSendLog(auth?: string): boolean {
+    if (!auth) return false;
+    if (getIdentifyByVerify(auth)) return true;
+    const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
+    return !!masterKey && timingSafeEq(auth, masterKey);
+}
+
+async function sendLogList(request: SendLogListRequest) {
+    request = SendLogListRequest.self(request);
+    if (!authedForSendLog(request.auth)) throw "Unauthorized";
+
+    const where: Record<string, any> = {};
+    if (request.status) where.status = request.status;
+    const { list, total } = await SendLogService.findList(where, request.limit, request.offset);
+    return { list, total };
+}
+
+async function sendLogUpdate(request: SendLogUpdateRequest) {
+    request = SendLogUpdateRequest.self(request);
+    if (!authedForSendLog(request.auth)) throw "Unauthorized";
+    if (!["pending", "sent", "failed"].includes(request.status)) throw "Invalid status";
+
+    const updated = await SendLogService.setStatus(request.id, request.status);
+    if (!updated) throw "Send log not found";
     return {};
 }
 
@@ -194,7 +236,7 @@ function summarizePush(email: any, duplicate: boolean, to: string) {
 }
 
 /**
- * Push an email through a mailbox's API key. Two body styles:
+ * Push an email over the master API key. Two body styles:
  * 1. structured JSON — {from?, subject, html/text, attachments?} — the server
  *    composes a valid RFC 5322 mail;
  * 2. raw MIME passthrough — Content-Type: message/rfc822 body, or a `raw` /
@@ -202,7 +244,8 @@ function summarizePush(email: any, duplicate: boolean, to: string) {
  *    message (IMAP fetch, browser capture).
  * Both are archived into the maildir (tmp → new rename) and ingested through
  * the shared pipeline; the response reports dedup and attachment outcomes so
- * scripts can self-check.
+ * scripts can self-check. If the recipient address has a mailbox record, the
+ * mail is associated with it (enables strategy forwarding via forward_enabled).
  */
 async function push(request: EmailPushRequest) {
     // mounted payload carries __headers/__raw_body — read them BEFORE the
@@ -214,27 +257,20 @@ async function push(request: EmailPushRequest) {
 
     request = EmailPushRequest.self(request);
     const apiKey = headers["x-api-key"] || request.auth || "";
+    const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
+    if (!masterKey || !timingSafeEq(apiKey, masterKey)) throw "Unauthorized";
     if (!allowPush(apiKey)) throw "推送频率超限（每分钟上限），请稍后再试";
 
     let to = (request.to || "").trim();
-    let mailbox = await MailboxService.findByApiKey(apiKey);
-    let mailboxId = "";
-    if (mailbox) {
-        // the mailbox owns the address — a mismatched `to` is a script
-        // misconfiguration, fail loudly instead of silently redirecting
-        if (to && to.toLowerCase() !== mailbox.address) {
-            throw `\`to\` (${to}) 与该邮箱地址 (${mailbox.address}) 不符；API Key 已绑定收件地址，可省略 \`to\``;
-        }
-        to = mailbox.address;
-        mailboxId = mailbox.id;
-    } else {
-        const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
-        if (!masterKey || !timingSafeEq(apiKey, masterKey)) throw "Unauthorized";
-        if (!to) throw "Missing `to` address";
-    }
 
-    const folder = `_api_${(to.split("@")[1] || "local").toLowerCase()}`;
-    const ingestOptions = { source: "api", mailboxId, folder };
+    // All API pushes share one archive folder — the recipient domain lives in
+    // the mail itself (and the index), the folder only marks the channel.
+    // Mailbox lookup (by recipient address) associates the mail with a
+    // registered mailbox, enabling strategy forwarding via forward_enabled.
+    const resolveIngestOptions = async () => {
+        const mailbox = to ? await MailboxService.findByAddress(to) : null;
+        return { source: "api", mailboxId: mailbox?.id || "", folder: "_api_recv" };
+    };
 
     // --- raw MIME passthrough ---
     const rawField = typeof request.raw === "string" ? request.raw : "";
@@ -249,12 +285,17 @@ async function push(request: EmailPushRequest) {
             rawBuf = Buffer.from(rawBodyField, "utf-8");
         }
         if (rawBuf.length === 0) throw "Empty raw email";
-        // the Message-ID lives inside the mail — needed for idempotent dedup
-        const inlineMessageId = request.message_id
-            || (parseRawEmail(rawBuf)?.message_id ?? "");
-        const stored = await EmailService.ingestRaw(rawBuf, ingestOptions);
+        // Message-ID and recipient live inside the mail — needed for
+        // idempotent dedup and for mailbox association when `to` is omitted
+        const parsedInline = parseRawEmail(rawBuf);
+        to = to || (parsedInline?.to || "").match(/[\w.+-]+@[\w.-]+/)?.[0] || "";
+        if (!to) throw "Missing `to` address (or a To header in the raw mail)";
+        const inlineMessageId = request.message_id || parsedInline?.message_id || "";
+        const stored = await EmailService.ingestRaw(rawBuf, await resolveIngestOptions());
         return await pushResultIdempotent(stored, to, inlineMessageId);
     }
+
+    if (!to) throw "Missing `to` address";
 
     // --- structured JSON ---
     const subject = request.subject || "";
@@ -279,7 +320,7 @@ async function push(request: EmailPushRequest) {
         messageId: request.message_id,
     });
 
-    const stored = await EmailService.ingestRaw(raw, ingestOptions);
+    const stored = await EmailService.ingestRaw(raw, await resolveIngestOptions());
     return await pushResultIdempotent(stored, to, request.message_id);
 }
 
@@ -344,5 +385,5 @@ async function restore(request: EmailRestoreRequest) {
 
 export const emailMount = {
     routes: emailRoutes,
-    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore, push, attachment },
+    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore, push, attachment, sendLogList, sendLogUpdate },
 };

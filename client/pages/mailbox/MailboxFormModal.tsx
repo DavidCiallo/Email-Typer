@@ -218,7 +218,7 @@ const MailboxFormModal = (params: {
                         </Select>
                         <p className="text-muted-foreground text-xs">
                             {formType === "catchall" && "本地域名下的地址，邮件即来即收。"}
-                            {formType === "api" && "创建后获得专用 Key，外部系统用它把邮件推送到该地址；域名可任填（如 yeah.net）。"}
+                            {formType === "api" && "登记一个供外部系统推送邮件的目标地址；域名可任填（如 yeah.net）。"}
                             {formType === "imap" && "凭服务商授权码，定时同步网易 / QQ 等外部邮箱的收件箱。"}
                         </p>
                     </div>

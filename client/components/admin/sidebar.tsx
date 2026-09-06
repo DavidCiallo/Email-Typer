@@ -5,7 +5,6 @@ import {
     Send,
     Filter,
     ShieldCheck,
-    Globe,
     Settings,
     Mailbox,
     type LucideIcon,
@@ -30,7 +29,6 @@ const mainItems: NavItem[] = [
 
 const secondaryItems: NavItem[] = [
     { title: "安全设置", href: "/safety", icon: ShieldCheck },
-    { title: "三方邮箱", href: "/thirdparty", icon: Globe },
     { title: "系统设置", href: "/settings", icon: Settings },
 ]
 

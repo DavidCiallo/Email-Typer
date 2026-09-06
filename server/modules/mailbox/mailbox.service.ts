@@ -5,7 +5,6 @@ import { SettingsService } from "../settings/settings.service";
 import { EmailService, maildirRoot } from "../email/email.service";
 import { aesEncrypt, aesDecrypt } from "../../lib/crypto";
 import { IMAP_PROVIDERS, resolveProvider } from "./imap.providers";
-import { nanoid } from "nanoid";
 import path from "path";
 import fs from "fs";
 
@@ -20,9 +19,10 @@ export class MailboxService {
         return await mailboxRepository.findOne({ id } as any);
     }
 
-    static async findByApiKey(key: string): Promise<MailboxEntity | null> {
-        if (!key) return null;
-        return await mailboxRepository.findOne({ api_key: key } as any);
+    /** Look up a registered mailbox by its exact address (push association). */
+    static async findByAddress(address: string): Promise<MailboxEntity | null> {
+        if (!address) return null;
+        return await mailboxRepository.findOne({ address } as any);
     }
 
     /**
@@ -59,7 +59,6 @@ export class MailboxService {
             imap_port: e.imap_port,
             imap_tls: e.imap_tls,
             sync_interval: e.sync_interval,
-            api_key: e.type === "api" ? e.api_key : "",
             status: e.status || "active",
             forward_enabled: e.forward_enabled ?? (e.type === "catchall" ? 1 : 0),
             sync_error: e.sync_error || "",
@@ -126,9 +125,6 @@ export class MailboxService {
             patch.imap_tls = 0;
             patch.sync_interval = 0;
             patch.credential = "";
-            if (body.type === "api") {
-                patch.api_key = `mk_${nanoid(32)}`;
-            }
         }
 
         if (id) {
@@ -136,8 +132,6 @@ export class MailboxService {
             if (!existing) throw "Mailbox not found";
             // keep credential when updating without a new password
             if (!patch.credential) delete patch.credential;
-            // api keys are managed via regenerateKey — don't overwrite on save
-            if (existing.type === "api") delete patch.api_key;
             const ok = await mailboxRepository.update({ id } as any, patch as any);
             if (!ok) throw "Mailbox not found";
             const updated = (await MailboxService.findById(id))!;
@@ -146,7 +140,6 @@ export class MailboxService {
 
         return await mailboxRepository.insert({
             ...patch,
-            api_key: patch.api_key ?? "",
             status: "active",
             sync_error: "",
             last_sync_time: null,
@@ -157,14 +150,6 @@ export class MailboxService {
 
     static async delete(id: string): Promise<boolean> {
         return await mailboxRepository.delete({ id } as any);
-    }
-
-    static async regenerateKey(id: string): Promise<string> {
-        const existing = await MailboxService.findById(id);
-        if (!existing) throw "Mailbox not found";
-        const api_key = `mk_${nanoid(32)}`;
-        await mailboxRepository.update({ id } as any, { api_key } as any);
-        return api_key;
     }
 
     static async setStatus(id: string, status: string, syncError?: string): Promise<void> {
