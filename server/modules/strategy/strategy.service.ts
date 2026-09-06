@@ -49,6 +49,10 @@ export class StrategyService {
                 ? forwardPreambleHtml(email.from, email.to) + email.html
                 : forwardPreamblePlain(email.from, email.to) + (email.text || ""),
             replyTo: replyTo || undefined,
+            // loop guard: if this copy ever re-enters the system (remote
+            // forwarders, scrapers pushing back over the API), ingest sees
+            // the stamp and stores it without forwarding again
+            headers: { "X-CFRS-Forwarded": "1" },
         });
         console.log(`[Strategy] Forwarded email from ${from} to ${strategy.forward_to}`);
     }

@@ -39,10 +39,12 @@ async function list(request: EmailListRequest) {
             { subject: { $contains: q } },
         ];
     }
-    // "Only intercepted" filter — never filters blocked=0 by default
-    // so legacy rows without the flag stay visible in the inbox.
+    // blocked=true shows only intercepted mail, false hides it; `$ne` keeps
+    // legacy rows without the flag visible in the inbox.
     if (request.blocked === true) {
         where.blocked = 1;
+    } else if (request.blocked === false) {
+        where.blocked = { $ne: 1 };
     }
     if (request.source) {
         where.source = request.source;

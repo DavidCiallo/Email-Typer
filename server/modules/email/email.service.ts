@@ -33,9 +33,11 @@ interface SendEmailParams {
     html: string;
     /** optional Reply-To header — used by strategy forwards so replies reach the original sender */
     replyTo?: string;
+    /** optional extra custom headers (e.g. the forward loop-guard stamp) */
+    headers?: Record<string, string>;
 }
 
-export async function sendEmail({ from, to, subject, html, replyTo }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ from, to, subject, html, replyTo, headers }: SendEmailParams): Promise<boolean> {
     // Match API key by from domain: "resend_api_keys" stores "domain1:key1,domain2:key2"
     let api_key = SettingsService.get("resend_api_key");
     const keyMap = SettingsService.get("resend_api_keys");
@@ -61,7 +63,11 @@ export async function sendEmail({ from, to, subject, html, replyTo }: SendEmailP
                 "Authorization": `Bearer ${api_key}`,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify(replyTo ? { from, to, subject, html, reply_to: replyTo } : { from, to, subject, html }),
+            body: JSON.stringify({
+                from, to, subject, html,
+                ...(replyTo ? { reply_to: replyTo } : {}),
+                ...(headers && Object.keys(headers).length ? { headers } : {}),
+            }),
         });
 
         if (!response.ok) {
@@ -293,7 +299,15 @@ export class EmailService {
         };
 
         const stored = await emailRepository.insert(email);
-        await EmailService.finalizeIngest(stored, verdict.blocked);
+
+        // A copy of our own forward that re-entered the system (remote
+        // auto-forwarders, scrapers pushing back over the API): store it but
+        // never forward again. The stamped header is authoritative; the
+        // byline is the fallback for copies that lost their headers.
+        const forwardedCopy = parsed.forwarded
+            || (parsed.html || "").slice(0, 300).includes("原发件人：")
+            || (parsed.text || "").startsWith("原发件人：");
+        await EmailService.finalizeIngest(stored, verdict.blocked || forwardedCopy);
 
         return stored;
     }

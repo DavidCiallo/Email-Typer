@@ -1,4 +1,4 @@
-import { formatEmail, blockLabel, sourceLabel } from "../../methods/format";
+import { formatEmail, blockLabel } from "../../methods/format";
 import { extractCodes } from "../../methods/verifycode";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
@@ -59,11 +59,6 @@ const InboxList = (params: {
                             </div>
                             <div className="flex items-center gap-1 overflow-x-hidden">
                                 <Badge variant="outline" className="shrink-0">主题</Badge>
-                                {email.source && email.source !== "maildir" && (
-                                    <Badge variant="secondary" className="shrink-0" title={`来源：${sourceLabel(email.source)}`}>
-                                        {sourceLabel(email.source)}
-                                    </Badge>
-                                )}
                                 {email.blocked === 1 && (
                                     <Badge variant="destructive" className="shrink-0" title={`命中规则：${email.block_rule}`}>
                                         拦截·{blockLabel(email.blocked_by)}

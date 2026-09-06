@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MailboxRouter } from "../../api/instance";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Pagination } from "../../components/ui/pagination";
 import { Badge } from "../../components/ui/badge";
 import {
     Table,
@@ -25,8 +27,10 @@ import {
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
 import { copytext } from "../../methods/text";
-import { RefreshCw, KeyRound, Plus, Inbox } from "lucide-react";
+import { RefreshCw, KeyRound, Plus, Inbox, Search } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
+
+const DERIVED_PAGE_SIZE = 10;
 
 const TYPE_LABEL: Record<string, string> = {
     catchall: "本地地址",
@@ -74,6 +78,15 @@ const MailboxPage = () => {
     const [domains, setDomains] = useState<string[]>([]);
     const [providers, setProviders] = useState<ProviderPreset[]>([]);
     const [derived, setDerived] = useState<any[]>([]);
+    const [derivedSearch, setDerivedSearch] = useState("");
+    const [derivedPage, setDerivedPage] = useState(1);
+
+    const filteredDerived = useMemo(() => {
+        const q = derivedSearch.trim().toLowerCase();
+        return q ? derived.filter((d) => d.address.toLowerCase().includes(q)) : derived;
+    }, [derived, derivedSearch]);
+    const derivedTotalPages = Math.max(1, Math.ceil(filteredDerived.length / DERIVED_PAGE_SIZE));
+    const pagedDerived = filteredDerived.slice((Math.min(derivedPage, derivedTotalPages) - 1) * DERIVED_PAGE_SIZE, Math.min(derivedPage, derivedTotalPages) * DERIVED_PAGE_SIZE);
 
     const [isFormOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<any | null>(null);
@@ -175,8 +188,8 @@ curl -X POST ${location.origin}/api/email/push \\
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
             <p className="text-muted-foreground text-sm">
-                邮箱是系统的「邮件来源」：本地地址即来即收（catch-all，未知地址自动出现在下方「未管理地址」中，可一键收编）；API
-                推送型邮箱提供独立 Key 供外部系统投递结构化邮件；IMAP 同步型邮箱凭授权码定时拉取外部邮箱（网易 / QQ 等）。
+                管理系统的收件地址：本地地址即来即收；API 邮箱供外部系统推送邮件；IMAP 邮箱定时同步网易 / QQ
+                等外部邮箱。未知地址收到信后会出现在「未管理地址」，可一键收编。
             </p>
 
             <div className="flex flex-row items-center justify-between">
@@ -286,6 +299,16 @@ curl -X POST ${location.origin}/api/email/push \\
                     </Table>
                 </div>
             ) : (
+                <div className="flex flex-col gap-3">
+                <div className="relative w-full md:w-80">
+                    <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                    <Input
+                        className="pl-8"
+                        placeholder="搜索地址…"
+                        value={derivedSearch}
+                        onChange={(e) => { setDerivedSearch(e.target.value); setDerivedPage(1); }}
+                    />
+                </div>
                 <div className="rounded-lg border bg-card shadow-xs">
                     <Table className="table-fixed">
                         <TableHeader>
@@ -297,17 +320,17 @@ curl -X POST ${location.origin}/api/email/push \\
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {derived.length === 0 ? (
+                            {pagedDerived.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={4} className="text-muted-foreground h-24 text-center">
                                         <span className="inline-flex items-center gap-2">
                                             <Inbox className="size-4" />
-                                            暂未发现未管理的地址
+                                            {derivedSearch ? "没有匹配的地址" : "暂未发现未管理的地址"}
                                         </span>
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                derived.map((item) => (
+                                pagedDerived.map((item) => (
                                     <TableRow key={item.address}>
                                         <TableCell>
                                             <div className="truncate" title={item.address}>{item.address}</div>
@@ -334,6 +357,11 @@ curl -X POST ${location.origin}/api/email/push \\
                             )}
                         </TableBody>
                     </Table>
+                </div>
+                <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-sm">共 {filteredDerived.length} 个地址</span>
+                    <Pagination page={derivedPage} total={derivedTotalPages} onChange={setDerivedPage} />
+                </div>
                 </div>
             )}
 
