@@ -1,7 +1,9 @@
 import Repository from "../../lib/repository";
 import { SafetyEntity } from "../../../shared/modules/safety/safety.entity";
+import { EmailEntity } from "../../../shared/modules/email/email.entity";
 
 const safetyRepository: Repository<SafetyEntity> = Repository.instance("Safety");
+const emailRepository: Repository<EmailEntity> = Repository.instance("Email");
 
 export class SafetyService {
     static async findList(where?: Partial<SafetyEntity>): Promise<SafetyEntity[]> {
@@ -27,13 +29,44 @@ export class SafetyService {
     }
 
     /**
-     * Evaluate an incoming email against safety rules.
+     * Re-run the current rules over every stored email and refresh blocked
+     * flags. Rules are normally evaluated at ingest time only; this makes a
+     * rule change retroactive so existing mail is classified the same way as
+     * newly arriving mail. Only rows whose verdict changed get rewritten.
+     */
+    static async reapplyToAll(): Promise<number> {
+        const rows = await emailRepository.find({} as any, { includeDeleted: true });
+        let updated = 0;
+        for (const e of rows) {
+            const verdict = await SafetyService.evaluate(
+                e.from || "",
+                e.to || "",
+                e.subject || "",
+                e.html || "",
+                e.text || "",
+            );
+            const blocked = verdict.blocked ? 1 : 0;
+            const blockedBy = verdict.blocked ? verdict.blockedBy : "";
+            const rule = verdict.blocked ? verdict.rule : "";
+            if (blocked === (e.blocked || 0) && blockedBy === (e.blocked_by || "") && rule === (e.block_rule || "")) continue;
+            await emailRepository.update({ id: e.id } as any, { blocked, blocked_by: blockedBy, block_rule: rule } as any, true);
+            updated++;
+        }
+        return updated;
+    }
+
+    /**
+     * Evaluate an email against safety rules.
      * Priority: whitelist > blacklist > sensitive_word
-     * The email is stored regardless — the verdict only decides forwarding.
-     * Streams rules one at a time — no accumulation in memory.
+     * Blacklist hits on either side of the conversation — a blacklisted
+     * address blocks mail from it AND mail addressed to it (catch-all
+     * inboxes need a way to silence a whole local address).
+     * The email is stored regardless — the verdict only decides visibility
+     * and forwarding.
      */
     static async evaluate(
         from: string,
+        to: string,
         subject: string,
         html?: string,
         text?: string,
@@ -48,7 +81,7 @@ export class SafetyService {
             if (e.type === "whitelist" && matchPattern(from, e.value)) {
                 whitelisted = true;
             }
-            if (!blacklistRule && e.type === "blacklist" && matchPattern(from, e.value)) {
+            if (!blacklistRule && e.type === "blacklist" && (matchPattern(from, e.value) || matchPattern(to, e.value))) {
                 blacklistRule = e.value;
             }
             if (!sensitiveRule && e.type === "sensitive_word") {
