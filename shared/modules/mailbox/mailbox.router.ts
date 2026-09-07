@@ -6,6 +6,11 @@ import {
     MailboxSyncRequest, MailboxSyncResponse,
     MailboxTestRequest, MailboxTestResponse,
     MailboxProvidersRequest, MailboxProvidersResponse,
+    MailboxGrantGetRequest, MailboxGrantGetResponse,
+    MailboxGrantSaveRequest, MailboxGrantSaveResponse,
+    MailboxGrantRevokeRequest, MailboxGrantRevokeResponse,
+    MailboxGrantListRequest, MailboxGrantListResponse,
+    MailboxTauthInfoRequest, MailboxTauthInfoResponse,
 } from "./mailbox.interface";
 
 export const mailboxRoutes = {
@@ -18,4 +23,9 @@ export const mailboxRoutes = {
     sync:          { path: "/sync",           request: {} as MailboxSyncRequest,          response: {} as MailboxSyncResponse },
     test:          { path: "/test",           request: {} as MailboxTestRequest,          response: {} as MailboxTestResponse },
     providers:     { path: "/providers",      request: {} as MailboxProvidersRequest,     response: {} as MailboxProvidersResponse },
+    grantGet:      { path: "/grant-get",      request: {} as MailboxGrantGetRequest,       response: {} as MailboxGrantGetResponse },
+    grantCreate:   { path: "/grant-create",   request: {} as MailboxGrantSaveRequest,      response: {} as MailboxGrantSaveResponse },
+    grantRevoke:   { path: "/grant-revoke",   request: {} as MailboxGrantRevokeRequest,    response: {} as MailboxGrantRevokeResponse },
+    grantList:     { path: "/grant-list",     request: {} as MailboxGrantListRequest,      response: {} as MailboxGrantListResponse },
+    tauthInfo:     { path: "/tauth-info",     request: {} as MailboxTauthInfoRequest,      response: {} as MailboxTauthInfoResponse },
 } as const;

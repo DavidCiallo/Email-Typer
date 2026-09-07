@@ -21,17 +21,43 @@ import { MailboxService } from "../mailbox/mailbox.service";
 import { composeRawEmail, parseRawEmail, ComposeAttachment } from "../../lib/mime";
 import { getDataDir } from "../../lib/repository";
 import { getIdentifyByVerify } from "../auth/auth.service";
+import { GrantService, TauthSession } from "../mailbox/grant.service";
+
+/**
+ * A valid tauth token (x-tauth header) narrows the session to one mailbox and
+ * its grant window: mail and send records are visible only from start_time on,
+ * and only when the mailbox address is on the other side of the conversation.
+ */
+async function resolveScope(request: any): Promise<{ tauth: TauthSession | null; user: boolean }> {
+    const tauthToken = String(request.__headers?.["x-tauth"] || "").trim();
+    const tauth = await GrantService.resolveTauth(tauthToken || undefined);
+    const user = !!getIdentifyByVerify(request.auth || "");
+    if (!tauth && !user) throw "Unauthorized";
+    return { tauth, user };
+}
+
+/** visibility predicate for tauth sessions — window start bounds everything */
+function inTauthScope(tauth: TauthSession, mail: { to?: string; from?: string; time?: number; create_time?: number }): boolean {
+    const windowStart = tauth.grant.start_time;
+    const toHit = (mail.to || "").toLowerCase().includes(tauth.address.toLowerCase());
+    const fromHit = (mail.from || "").toLowerCase().includes(tauth.address.toLowerCase());
+    const time = Number(mail.time ?? mail.create_time ?? 0);
+    return time >= windowStart && (toHit || fromHit);
+}
 
 async function list(request: EmailListRequest) {
+    const scope = await resolveScope(request);
     request = EmailListRequest.self(request);
-    const email = getIdentifyByVerify(request.auth || "");
-    if (!email) throw "Unauthorized";
 
-    const archived = request.archived === true;
+    const archived = scope.user && request.archived === true;
     const where: Record<string, any> = archived
         ? { delete_time: { $ne: null } }
         : { delete_time: null };
-    if (request.account_id) {
+    if (scope.tauth) {
+        where.to = { $contains: scope.tauth.address };
+        where.time = { $gte: scope.tauth.grant.start_time };
+    }
+    if (!scope.tauth && request.account_id) {
         where.account_id = request.account_id;
     }
     const q = (request.q || "").trim();
@@ -89,21 +115,23 @@ async function list(request: EmailListRequest) {
 }
 
 async function detail(request: EmailDetailRequest) {
+    const scope = await resolveScope(request);
     request = EmailDetailRequest.self(request);
-    const email = getIdentifyByVerify(request.auth || "");
-    if (!email) throw "Unauthorized";
 
     const data = await EmailService.findById(request.id);
     if (!data) throw "Email not found";
+    if (scope.tauth && !inTauthScope(scope.tauth, data)) throw "Email not found";
     return data;
 }
 
 async function send(request: EmailSendRequest) {
+    const scope = await resolveScope(request);
     request = EmailSendRequest.self(request);
-    const email = getIdentifyByVerify(request.auth || "");
-    if (!email) throw "Unauthorized";
 
     const { from, to, subject, html } = request.email;
+    if (scope.tauth && from !== scope.tauth.address) {
+        throw "A temporary session can only send from the granted mailbox";
+    }
 
     // Validate from domain against allowed_from_domains
     const allowedFrom = SettingsService.get("allowed_from_domains");
@@ -149,10 +177,16 @@ function authedForSendLog(auth?: string): boolean {
 }
 
 async function sendLogList(request: SendLogListRequest) {
-    request = SendLogListRequest.self(request);
-    if (!authedForSendLog(request.auth)) throw "Unauthorized";
+    const scope = await resolveScope(request);
+    const machine = !scope.tauth && authedForSendLog(request.auth);
+    if (!scope.user && !machine && !scope.tauth) throw "Unauthorized";
 
     const where: Record<string, any> = {};
+    if (scope.tauth) {
+        // grant holders see only their own tasks, from the window start on
+        where.from = { $contains: scope.tauth.address };
+        where.create_time = { $gte: scope.tauth.grant.start_time };
+    }
     if (request.status) where.status = request.status;
     const { list, total } = await SendLogService.findList(where, request.limit, request.offset);
     // attachment payloads only travel when explicitly requested (external scripts)
@@ -166,9 +200,15 @@ async function sendLogList(request: SendLogListRequest) {
 }
 
 async function sendLogUpdate(request: SendLogUpdateRequest) {
-    request = SendLogUpdateRequest.self(request);
-    if (!authedForSendLog(request.auth)) throw "Unauthorized";
+    const scope = await resolveScope(request);
+    const machine = !scope.tauth && authedForSendLog(request.auth);
+    if (!scope.user && !machine && !scope.tauth) throw "Unauthorized";
     if (!["pending", "sent", "failed"].includes(request.status)) throw "Invalid status";
+
+    if (scope.tauth) {
+        const log = await SendLogService.findById(request.id);
+        if (!log || !inTauthScope(scope.tauth, log)) throw "Send log not found";
+    }
 
     const updated = await SendLogService.setStatus(request.id, request.status);
     if (!updated) throw "Send log not found";
@@ -344,12 +384,12 @@ async function push(request: EmailPushRequest) {
  * Download one attachment. Responds with the raw file (mounted as a Response).
  */
 async function attachment(request: EmailAttachmentRequest) {
+    const scope = await resolveScope(request);
     request = EmailAttachmentRequest.self(request);
-    const email = getIdentifyByVerify(request.auth || "");
-    if (!email) throw "Unauthorized";
 
     const data = await EmailService.findById(request.id);
     if (!data) throw "Email not found";
+    if (scope.tauth && !inTauthScope(scope.tauth, data)) throw "Email not found";
     const meta = (data.attachments || [])[request.index];
     if (!meta) throw "Attachment not found";
     if (meta.skipped || !meta.path) throw "Attachment was not stored (size limit exceeded)";
