@@ -5,6 +5,12 @@ import { EmailEntity } from "../../../shared/modules/email/email.entity";
 const safetyRepository: Repository<SafetyEntity> = Repository.instance("Safety");
 const emailRepository: Repository<EmailEntity> = Repository.instance("Email");
 
+/** Serial background queue — retroactive re-evaluation runs here, off the
+ * request path. A single promise chain guarantees one pass at a time so
+ * concurrent rule edits never rewrite the email store in parallel. */
+let reapplyChain: Promise<void> = Promise.resolve();
+let reapplyQueued = false;
+
 export class SafetyService {
     static async findList(where?: Partial<SafetyEntity>): Promise<SafetyEntity[]> {
         return await safetyRepository.find(where);
@@ -29,6 +35,26 @@ export class SafetyService {
     }
 
     /**
+     * Queue a full retroactive re-evaluation in the background and return
+     * immediately. Rule edits stay snappy regardless of email-store size; the
+     * reapply drains serially on its own chain. Coalesced: a second request
+     * while one is queued just marks another pass (single-flight).
+     */
+    static scheduleReapply(): void {
+        if (reapplyQueued) return;
+        reapplyQueued = true;
+        reapplyChain = reapplyChain.then(async () => {
+            try {
+                await SafetyService.reapplyToAllInner();
+            } catch (e) {
+                console.error("[Safety] background reapply failed:", e);
+            } finally {
+                reapplyQueued = false;
+            }
+        });
+    }
+
+    /**
      * Re-run the current rules over every stored email and refresh blocked
      * flags. Rules are normally evaluated at ingest time only; this makes a
      * rule change retroactive so existing mail is classified the same way as
@@ -36,7 +62,7 @@ export class SafetyService {
      * written back in a single pass — oversized JSONL stores would otherwise
      * pay one full-file rewrite per changed email.
      */
-    static async reapplyToAll(): Promise<number> {
+    private static async reapplyToAllInner(): Promise<number> {
         const rules = await safetyRepository.find({} as any);
         const updated = await emailRepository.patchAll((e) => {
             const verdict = SafetyService.evaluateWithRules(

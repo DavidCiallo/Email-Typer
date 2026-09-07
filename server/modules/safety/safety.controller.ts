@@ -31,7 +31,7 @@ async function save(request: SafetySaveRequest) {
     await requireAdmin(request.auth);
 
     await SafetyService.save(request.entry);
-    await SafetyService.reapplyToAll();
+    SafetyService.scheduleReapply();
     return {};
 }
 
@@ -41,7 +41,7 @@ async function deleteEntry(request: SafetyDeleteRequest) {
 
     const result = await SafetyService.delete(request.id);
     if (!result) throw "Safety entry not found";
-    await SafetyService.reapplyToAll();
+    SafetyService.scheduleReapply();
     return {};
 }
 
