@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom"
 import { LogOut } from "lucide-react"
+import { inTauthSession, getTauthAddress, clearTauth } from "../../methods/tauth"
 
 import { Avatar, AvatarFallback } from "@/client/components/ui/avatar"
 import { Button } from "@/client/components/ui/button"
@@ -14,9 +15,17 @@ import {
 
 export function UserMenu() {
     const navigate = useNavigate()
-    const email = localStorage.getItem("login_email") || "admin"
+    const tauth = inTauthSession()
+    const email = tauth
+        ? getTauthAddress() || "临时授权"
+        : localStorage.getItem("login_email") || "admin"
 
     function onLogout() {
+        if (inTauthSession()) {
+            clearTauth()
+            navigate("/auth", { replace: true })
+            return
+        }
         localStorage.removeItem("token")
         navigate("/auth", { replace: true })
     }
