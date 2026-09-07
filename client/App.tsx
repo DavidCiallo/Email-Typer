@@ -65,6 +65,15 @@ const TauthGate = () => {
   return null;
 };
 
+/** Admin-only pages are not part of a temp grant session — kick temp
+ * sessions back to the inbox even when the URL is typed directly. The
+ * sidebar already hides these entries for tauth; this closes the
+ * URL-bypass gap. Backend requireAdmin() independently rejects them. */
+const AdminGate = () => {
+    if (inTauthSession()) return <Navigate to="/inbox" replace />;
+    return <Outlet />;
+};
+
 const App = () => {
   autoRecordLive();
 
@@ -80,11 +89,13 @@ const App = () => {
         <Route element={<PrivateRoute />}>
           <Route element={<AdminLayout />}>
             <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/mailbox" element={<MailboxPage />} />
             <Route path="/strategy" element={<StrategyPage />} />
             <Route path="/send" element={<SenderPage />} />
-            <Route path="/safety" element={<SafetyPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route element={<AdminGate />}>
+              <Route path="/mailbox" element={<MailboxPage />} />
+              <Route path="/safety" element={<SafetyPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
           </Route>
         </Route>
         <Route path="/" element={<Navigate to="/inbox" replace />} />
