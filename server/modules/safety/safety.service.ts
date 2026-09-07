@@ -5,6 +5,12 @@ import { EmailEntity } from "../../../shared/modules/email/email.entity";
 const safetyRepository: Repository<SafetyEntity> = Repository.instance("Safety");
 const emailRepository: Repository<EmailEntity> = Repository.instance("Email");
 
+/** Serial background queue — retroactive re-evaluation runs here, off the
+ * request path. A single promise chain guarantees one pass at a time so
+ * concurrent rule edits never rewrite the email store in parallel. */
+let reapplyChain: Promise<void> = Promise.resolve();
+let reapplyQueued = false;
+
 export class SafetyService {
     static async findList(where?: Partial<SafetyEntity>): Promise<SafetyEntity[]> {
         return await safetyRepository.find(where);
@@ -29,16 +35,38 @@ export class SafetyService {
     }
 
     /**
+     * Queue a full retroactive re-evaluation in the background and return
+     * immediately. Rule edits stay snappy regardless of email-store size; the
+     * reapply drains serially on its own chain. Coalesced: a second request
+     * while one is queued just marks another pass (single-flight).
+     */
+    static scheduleReapply(): void {
+        if (reapplyQueued) return;
+        reapplyQueued = true;
+        reapplyChain = reapplyChain.then(async () => {
+            try {
+                await SafetyService.reapplyToAllInner();
+            } catch (e) {
+                console.error("[Safety] background reapply failed:", e);
+            } finally {
+                reapplyQueued = false;
+            }
+        });
+    }
+
+    /**
      * Re-run the current rules over every stored email and refresh blocked
      * flags. Rules are normally evaluated at ingest time only; this makes a
      * rule change retroactive so existing mail is classified the same way as
-     * newly arriving mail. Only rows whose verdict changed get rewritten.
+     * newly arriving mail. Rules are loaded once and all changed rows are
+     * written back in a single pass — oversized JSONL stores would otherwise
+     * pay one full-file rewrite per changed email.
      */
-    static async reapplyToAll(): Promise<number> {
-        const rows = await emailRepository.find({} as any, { includeDeleted: true });
-        let updated = 0;
-        for (const e of rows) {
-            const verdict = await SafetyService.evaluate(
+    private static async reapplyToAllInner(): Promise<number> {
+        const rules = await safetyRepository.find({} as any);
+        const updated = await emailRepository.patchAll((e) => {
+            const verdict = SafetyService.evaluateWithRules(
+                rules,
                 e.from || "",
                 e.to || "",
                 e.subject || "",
@@ -46,12 +74,13 @@ export class SafetyService {
                 e.text || "",
             );
             const blocked = verdict.blocked ? 1 : 0;
-            const blockedBy = verdict.blocked ? verdict.blockedBy : "";
-            const rule = verdict.blocked ? verdict.rule : "";
-            if (blocked === (e.blocked || 0) && blockedBy === (e.blocked_by || "") && rule === (e.block_rule || "")) continue;
-            await emailRepository.update({ id: e.id } as any, { blocked, blocked_by: blockedBy, block_rule: rule } as any, true);
-            updated++;
-        }
+            if (blocked === (e.blocked || 0)
+                && verdict.blockedBy === (e.blocked_by || "")
+                && verdict.rule === (e.block_rule || "")) {
+                return null;
+            }
+            return { blocked, blocked_by: verdict.blockedBy, block_rule: verdict.rule } as any;
+        }, { includeDeleted: true });
         return updated;
     }
 
@@ -71,13 +100,34 @@ export class SafetyService {
         html?: string,
         text?: string,
     ): Promise<{ blocked: boolean; blockedBy: string; rule: string }> {
-        const body = (html || "") + (text || "");
+        const rules = await safetyRepository.find({} as any);
+        return SafetyService.evaluateWithRules(rules, from, to, subject, html, text);
+    }
+
+    /** Rules are pre-loaded (caller) so a bulk pass doesn't re-read the rule store per email. */
+    private static evaluateWithRules(
+        rules: SafetyEntity[],
+        from: string,
+        to: string,
+        subject: string,
+        html?: string,
+        text?: string,
+    ): { blocked: boolean; blockedBy: string; rule: string } {
+        const subjectLower = subject.toLowerCase();
+        // Lowercase the body at most once, and only when a sensitive-word rule
+        // exists — blacklist/whitelist rows never need the body.
+        let bodyLower: string | null = null;
+        const hasSensitive = rules.some((e) => e.type === "sensitive_word");
 
         let whitelisted = false;
         let blacklistRule = "";
         let sensitiveRule = "";
 
-        await safetyRepository.findEach((e) => {
+        if (hasSensitive) {
+            bodyLower = ((html || "") + (text || "")).toLowerCase();
+        }
+
+        for (const e of rules) {
             if (e.type === "whitelist" && matchPattern(from, e.value)) {
                 whitelisted = true;
             }
@@ -86,11 +136,11 @@ export class SafetyService {
             }
             if (!sensitiveRule && e.type === "sensitive_word") {
                 const keyword = e.value.toLowerCase();
-                if (subject.toLowerCase().includes(keyword) || body.toLowerCase().includes(keyword)) {
+                if (subjectLower.includes(keyword) || (bodyLower && bodyLower.includes(keyword))) {
                     sensitiveRule = e.value;
                 }
             }
-        });
+        }
 
         // Whitelist takes priority over everything
         if (whitelisted) return { blocked: false, blockedBy: "", rule: "" };

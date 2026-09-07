@@ -93,7 +93,6 @@ export function KeyValueList({
     function update(next: Pair[]) {
         onChange(
             next
-                .filter((p) => p.domain || p.key)
                 .map((p) => `${p.domain}:${p.key}`)
                 .join(","),
         );
