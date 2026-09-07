@@ -18,7 +18,7 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 const DEFAULT_ATTACHMENT_LIMIT = 10 * 1024 * 1024; // 10MB per attachment
 
 export function maildirRoot(): string {
-    return process.env.MAILDIR_PATH || "./eml";
+    return SettingsService.get("maildir_path") || "./eml";
 }
 
 function attachmentLimit(): number {

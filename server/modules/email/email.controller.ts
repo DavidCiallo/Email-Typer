@@ -172,7 +172,7 @@ async function send(request: EmailSendRequest) {
 function authedForSendLog(auth?: string): boolean {
     if (!auth) return false;
     if (getIdentifyByVerify(auth)) return true;
-    const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
+    const masterKey = SettingsService.get("email_receive_api_key");
     return !!masterKey && timingSafeEq(auth, masterKey);
 }
 
@@ -225,7 +225,7 @@ async function receive(request: EmailReceiveRequest) {
     // Auth via API key — either from request or env
     const req = request as any;
     const apiKey = req.auth || "";
-    const expectedKey = process.env.EMAIL_RECEIVE_API_KEY || "";
+    const expectedKey = SettingsService.get("email_receive_api_key");
     if (!expectedKey || !timingSafeEq(apiKey, expectedKey)) throw "Unauthorized";
 
     const raw = req.raw || rawBodyField || "";
@@ -246,7 +246,7 @@ const pushHits = new Map<string, number[]>();
 
 /** Per-key sliding-window rate limit — protects the store-first pipeline from a runaway bridge script. */
 function allowPush(key: string): boolean {
-    const limit = Number(process.env.PUSH_RATE_LIMIT_PER_MIN || 120);
+    const limit = Number(SettingsService.get("push_rate_limit_per_min") || 120);
     if (!key || !Number.isFinite(limit) || limit <= 0) return true;
     const now = Date.now();
     const hits = (pushHits.get(key) || []).filter(t => now - t < 60_000);
@@ -313,7 +313,7 @@ async function push(request: EmailPushRequest) {
 
     request = EmailPushRequest.self(request);
     const apiKey = headers["x-api-key"] || request.auth || "";
-    const masterKey = process.env.EMAIL_RECEIVE_API_KEY || "";
+    const masterKey = SettingsService.get("email_receive_api_key");
     if (!masterKey || !timingSafeEq(apiKey, masterKey)) throw "Unauthorized";
     if (!allowPush(apiKey)) throw "推送频率超限（每分钟上限），请稍后再试";
 

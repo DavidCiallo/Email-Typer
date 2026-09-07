@@ -23,7 +23,10 @@ export async function initialize() {
         }
     }
 
-    const maildirPath = process.env.MAILDIR_PATH;
+    // Settings are loaded from DB above (env fallback); maildir_path is
+    // configurable on the settings page, though a running watcher only
+    // picks it up after a restart.
+    const maildirPath = SettingsService.get("maildir_path");
     if (maildirPath) {
         startEmailWatcher(maildirPath);
     }
