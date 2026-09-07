@@ -75,12 +75,19 @@ export class EmailDetailResponse implements BaseResponse<EmailEntity> {
 }
 
 // Send email
+export interface EmailSendAttachment {
+    filename: string;
+    /** base64 payload */
+    content: string;
+}
+
 export class EmailSendBody {
     public from: string;
     public to: string;
     public subject: string;
     public html: string;
     public text?: string;
+    public attachments?: EmailSendAttachment[];
 
     constructor(origin: any) {
         if (!origin.from || !origin.to || !origin.subject || !origin.html) {
@@ -91,6 +98,7 @@ export class EmailSendBody {
         this.subject = origin.subject;
         this.html = origin.html;
         this.text = origin.text || "";
+        this.attachments = origin.attachments || [];
     }
 
     static self(unsafe: EmailSendBody) {
@@ -131,12 +139,15 @@ export class SendLogListRequest implements BaseRequest {
     public status?: string;
     public limit?: number;
     public offset?: number;
+    /** include attachment base64 payloads (for external channel scripts) */
+    public include_content?: boolean;
 
     constructor(origin: Partial<SendLogListRequest>) {
         origin.auth && (this.auth = origin.auth);
         this.status = origin.status;
         this.limit = origin.limit;
         this.offset = origin.offset;
+        this.include_content = origin.include_content;
     }
     static self(unsafe: SendLogListRequest) {
         return new SendLogListRequest(unsafe);

@@ -19,8 +19,9 @@ import {
 } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
-import { RefreshCw, Plus, Inbox, Search } from "lucide-react";
+import { RefreshCw, Plus, Inbox, Search, Clock } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
+import MailboxGrantDialog from "./MailboxGrantDialog";
 
 const DERIVED_PAGE_SIZE = 10;
 
@@ -89,6 +90,7 @@ const MailboxPage = () => {
 
     const [isFormOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<any | null>(null);
+    const [grantBox, setGrantBox] = useState<any | null>(null);
     const [syncingId, setSyncingId] = useState<string | null>(null);
     const [adopting, setAdopting] = useState<string | null>(null);
 
@@ -268,6 +270,10 @@ const MailboxPage = () => {
                                                         {syncingId === row.id ? "同步中" : "同步"}
                                                     </Button>
                                                 )}
+                                                <Button size="sm" variant="outline" onClick={() => setGrantBox(row)}>
+                                                    <Clock className="size-3.5" />
+                                                    临时授权
+                                                </Button>
                                                 <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
                                                 <Button
                                                     size="sm"
@@ -352,6 +358,12 @@ const MailboxPage = () => {
                 </div>
                 </div>
             )}
+
+            <MailboxGrantDialog
+                isOpen={!!grantBox}
+                onOpenChange={(open) => !open && setGrantBox(null)}
+                mailbox={grantBox}
+            />
 
             <MailboxFormModal
                 isOpen={isFormOpen}

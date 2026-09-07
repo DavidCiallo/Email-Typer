@@ -12,6 +12,7 @@ import {
 
 import { cn } from "@/client/lib/utils"
 import { BrandIcon } from "@/client/components/logo"
+import { inTauthSession, clearTauth, getTauthAddress } from "../../methods/tauth"
 
 type NavItem = {
     title: string
@@ -51,33 +52,59 @@ export function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         <>
             <div className="flex h-16 items-center gap-2 border-b px-6">
                 <BrandIcon className="size-8" />
-                <span className="text-lg font-semibold tracking-tight">多邮箱系统</span>
+                <span className="text-lg font-semibold tracking-tight truncate">
+                    {inTauthSession() ? (getTauthAddress() || "临时授权") : "多邮箱系统"}
+                </span>
             </div>
 
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-                <p className="text-muted-foreground px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-wider">
-                    邮件工作台
-                </p>
-                {mainItems.map((item) => (
-                    <SidebarItem
-                        key={item.href}
-                        item={item.href === "/inbox" ? { ...item, badge: unread } : item}
-                        onNavigate={onNavigate}
-                    />
-                ))}
-
-                <p className="text-muted-foreground px-3 pb-2 pt-6 text-xs font-semibold uppercase tracking-wider">
-                    通用
-                </p>
-                {secondaryItems.map((item) => (
-                    <SidebarItem key={item.href} item={item} onNavigate={onNavigate} />
-                ))}
+                {inTauthSession() ? (
+                    <>
+                        <p className="text-muted-foreground px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-wider">
+                            临时会话
+                        </p>
+                        {[mainItems[0], mainItems[3], mainItems[2]].map((item) => (
+                            <SidebarItem key={item.href} item={item} onNavigate={onNavigate} />
+                        ))}
+                    </>
+                ) : (
+                    <>
+                        <p className="text-muted-foreground px-3 pb-2 pt-2 text-xs font-semibold uppercase tracking-wider">
+                            邮件工作台
+                        </p>
+                        {mainItems.map((item) => (
+                            <SidebarItem
+                                key={item.href}
+                                item={item.href === "/inbox" ? { ...item, badge: unread } : item}
+                                onNavigate={onNavigate}
+                            />
+                        ))}
+                        <p className="text-muted-foreground px-3 pb-2 pt-6 text-xs font-semibold uppercase tracking-wider">
+                            通用
+                        </p>
+                        {secondaryItems.map((item) => (
+                            <SidebarItem key={item.href} item={item} onNavigate={onNavigate} />
+                        ))}
+                    </>
+                )}
             </nav>
 
             <div className="border-t p-3">
-                <div className="bg-sidebar-accent text-sidebar-accent-foreground rounded-lg p-3 text-xs">
-                    <p className="font-medium">Email Admin</p>
-                </div>
+                {inTauthSession() ? (
+                    <div className="bg-sidebar-accent text-sidebar-accent-foreground rounded-lg p-3 text-xs">
+                        <p className="font-medium truncate">{getTauthAddress() || "临时授权"}</p>
+                        <button
+                            className="text-muted-foreground hover:text-foreground mt-1 underline"
+                            onClick={() => { clearTauth(); location.href = "/auth"; }}
+                        >
+                            注销
+                        </button>
+                    </div>
+                ) : (
+                    <div className="bg-sidebar-accent text-sidebar-accent-foreground rounded-lg p-3 text-xs">
+                        <p className="font-medium">Email Admin</p>
+                    </div>
+                )}
             </div>
         </>
     )

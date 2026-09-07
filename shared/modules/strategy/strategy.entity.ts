@@ -8,4 +8,6 @@ export interface StrategyEntity extends BaseEntity {
     forward_to: string;     // forward target email address
     enabled: number;        // 1 = enabled, 0 = disabled
     account_id: string;     // owner account id
+    scope?: string;         // "persistent" (default) | "temp"
+    grant_id?: string;      // temp strategies: owning mailbox grant; "" for persistent
 }

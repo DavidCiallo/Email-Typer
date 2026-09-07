@@ -35,9 +35,11 @@ interface SendEmailParams {
     replyTo?: string;
     /** optional extra custom headers (e.g. the forward loop-guard stamp) */
     headers?: Record<string, string>;
+    /** optional base64 attachments passed straight through to Resend */
+    attachments?: { filename: string; content: string }[];
 }
 
-export async function sendEmail({ from, to, subject, html, replyTo, headers }: SendEmailParams): Promise<boolean> {
+export async function sendEmail({ from, to, subject, html, replyTo, headers, attachments }: SendEmailParams): Promise<boolean> {
     // Match API key by from domain: "resend_api_keys" stores "domain1:key1,domain2:key2"
     let api_key = SettingsService.get("resend_api_key");
     const keyMap = SettingsService.get("resend_api_keys");
@@ -67,6 +69,7 @@ export async function sendEmail({ from, to, subject, html, replyTo, headers }: S
                 from, to, subject, html,
                 ...(replyTo ? { reply_to: replyTo } : {}),
                 ...(headers && Object.keys(headers).length ? { headers } : {}),
+                ...(attachments && attachments.length ? { attachments } : {}),
             }),
         });
 

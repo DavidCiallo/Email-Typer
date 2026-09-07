@@ -1,5 +1,6 @@
 import { BaseRequest, BaseResponse } from "../../lib/default/decorator";
 import { MailboxEntity } from "./mailbox.entity";
+import { MailboxGrantEntity } from "./mailbox-grant.entity";
 
 export type MailboxDTO = Pick<
     MailboxEntity,
@@ -261,6 +262,135 @@ export class MailboxProvidersResponse implements BaseResponse<{ presets: Provide
     public data?: { presets: ProviderPresetDTO[] };
 
     constructor(origin: MailboxProvidersResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+// ---- temporary mailbox access grants (tauth) ----
+
+export class MailboxGrantGetRequest implements BaseRequest {
+    public auth?: string;
+    public mailbox_id: string;
+
+    constructor(origin: Partial<MailboxGrantGetRequest>) {
+        if (!origin.mailbox_id) throw new Error("mailbox_id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.mailbox_id = origin.mailbox_id;
+    }
+    static self(unsafe: MailboxGrantGetRequest) {
+        return new MailboxGrantGetRequest(unsafe);
+    }
+}
+
+export class MailboxGrantGetResponse implements BaseResponse<{ grant: MailboxGrantEntity | null }> {
+    public success: boolean;
+    public message: string;
+    public data?: { grant: MailboxGrantEntity | null };
+
+    constructor(origin: MailboxGrantGetResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+export class MailboxGrantSaveRequest implements BaseRequest {
+    public auth?: string;
+    public mailbox_id: string;
+    /** validity in days, counted from creation moment */
+    public days: number;
+    public note?: string;
+
+    constructor(origin: Partial<MailboxGrantSaveRequest>) {
+        if (!origin.mailbox_id) throw new Error("mailbox_id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.mailbox_id = origin.mailbox_id;
+        this.days = Number(origin.days) || 7;
+        this.note = origin.note || "";
+    }
+    static self(unsafe: MailboxGrantSaveRequest) {
+        return new MailboxGrantSaveRequest(unsafe);
+    }
+}
+
+export class MailboxGrantSaveResponse implements BaseResponse<{ token: string; grant: MailboxGrantEntity }> {
+    public success: boolean;
+    public message: string;
+    public data?: { token: string; grant: MailboxGrantEntity };
+
+    constructor(origin: MailboxGrantSaveResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+export class MailboxGrantRevokeRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+
+    constructor(origin: Partial<MailboxGrantRevokeRequest>) {
+        if (!origin.id) throw new Error("id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+    }
+    static self(unsafe: MailboxGrantRevokeRequest) {
+        return new MailboxGrantRevokeRequest(unsafe);
+    }
+}
+
+export class MailboxGrantRevokeResponse implements BaseResponse<null> {
+    public success: boolean;
+    public message: string;
+
+    constructor(origin: MailboxGrantRevokeResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+    }
+}
+
+export class MailboxTauthInfoRequest implements BaseRequest {
+    public auth?: string;
+
+    constructor(origin: Partial<MailboxTauthInfoRequest>) {
+        origin.auth && (this.auth = origin.auth);
+    }
+    static self(unsafe: MailboxTauthInfoRequest) {
+        return new MailboxTauthInfoRequest(unsafe);
+    }
+}
+
+export class MailboxTauthInfoResponse implements BaseResponse<{ address: string; start_time: number; end_time: number }> {
+    public success: boolean;
+    public message: string;
+    public data?: { address: string; start_time: number; end_time: number };
+
+    constructor(origin: MailboxTauthInfoResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+export class MailboxGrantListRequest implements BaseRequest {
+    public auth?: string;
+
+    constructor(origin: Partial<MailboxGrantListRequest>) {
+        origin.auth && (this.auth = origin.auth);
+    }
+    static self(unsafe: MailboxGrantListRequest) {
+        return new MailboxGrantListRequest(unsafe);
+    }
+}
+
+export class MailboxGrantListResponse implements BaseResponse<{ list: MailboxGrantEntity[] }> {
+    public success: boolean;
+    public message: string;
+    public data?: { list: MailboxGrantEntity[] };
+
+    constructor(origin: MailboxGrantListResponse) {
         this.success = origin.success;
         this.message = origin.message;
         this.data = origin.data;

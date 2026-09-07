@@ -5,9 +5,10 @@ import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Paperclip, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
+import { inTauthSession } from "../../methods/tauth";
 import SendHistoryDialog from "./SendHistoryDialog";
 
 /** Searchable sender picker over the managed mailboxes. */
@@ -72,8 +73,34 @@ const SenderPage = () => {
     const [justSend, setJustSend] = useState(false);
     const [senders, setSenders] = useState<string[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [files, setFiles] = useState<File[]>([]);
+
+    function addFiles(list: FileList | null) {
+        if (!list) return;
+        setFiles((prev) => [...prev, ...Array.from(list)].slice(0, 10));
+    }
+
+    function fileToBase64(f: File): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+            reader.onerror = reject;
+            reader.readAsDataURL(f);
+        });
+    }
 
     useEffect(() => {
+        if (inTauthSession()) {
+            // 临时授权会话：发件人锁定为被授权的邮箱
+            MailboxRouter.tauthInfo({}, (res: any) => {
+                const info = res?.data || res;
+                if (info?.address) {
+                    setSenders([info.address]);
+                    setFrom(info.address);
+                }
+            });
+            return;
+        }
         // 发信只能用已管理的邮箱地址
         MailboxRouter.list({}, (res: any) => {
             const result = res?.data || res;
@@ -90,7 +117,11 @@ const SenderPage = () => {
         if (justSend) return toast({ title: "发送频率过高，请稍等", color: "danger" });
         setJustSend(true);
         setTimeout(() => setJustSend(false), 5000);
-        EmailRouter.send({ email: { from, to, subject, html } }, (res: any) => {
+        const attachments = await Promise.all(files.map(async (f) => ({
+            filename: f.name,
+            content: await fileToBase64(f),
+        })));
+        EmailRouter.send({ email: { from, to, subject, html, attachments } }, (res: any) => {
             if (res.success) {
                 toast({
                     title: res.data?.status === "pending" ? "已存入发件历史，等待外部通道发送" : "发送成功",
@@ -99,6 +130,7 @@ const SenderPage = () => {
                 setTo("");
                 setSubject("");
                 setHtml("");
+                setFiles([]);
             } else {
                 toast({ title: res.message || "发送失败", color: "danger" });
             }
@@ -135,12 +167,38 @@ const SenderPage = () => {
                             id="send-content"
                             placeholder="请输入内容"
                             value={html}
-                            rows={14}
+                            rows={10}
+                            className="min-h-[270px] field-sizing-fixed"
                             onChange={(e) => setHtml(e.target.value)}
                         />
                     </div>
                 </CardContent>
             </Card>
+            <div className="flex flex-wrap items-center gap-2">
+                <label className="cursor-pointer">
+                    <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+                    />
+                    <span className="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-muted">
+                        <Paperclip className="size-4" />
+                        添加附件
+                    </span>
+                </label>
+                {files.map((f, idx) => (
+                    <span key={`${f.name}-${idx}`} className="bg-muted flex items-center gap-1 rounded-md px-2 py-1 text-xs">
+                        <Paperclip className="size-3" />
+                        <span className="max-w-48 truncate">{f.name}</span>
+                        <span className="text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
+                        <button onClick={() => setFiles(files.filter((_, i) => i !== idx))} aria-label="移除附件">
+                            <X className="size-3.5" />
+                        </button>
+                    </span>
+                ))}
+            </div>
+
             <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-between">
                 <Button variant="outline" onClick={() => setHistoryOpen(true)} className="md:w-32">
                     查看历史

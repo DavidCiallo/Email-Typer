@@ -39,7 +39,8 @@ export class HttpClientService {
                 body: JSON.stringify(body),
                 headers: {
                     "Content-Type": "application/json",
-                    "token": localStorage.getItem("token") || ""
+                    "token": localStorage.getItem("token") || "",
+                    "x-tauth": localStorage.getItem("tauth") || ""
                 }
             });
             const data = await res.json();

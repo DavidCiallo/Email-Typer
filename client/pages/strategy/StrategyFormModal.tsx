@@ -22,9 +22,11 @@ interface Props {
     onOpenChange: (open: boolean) => void;
     onSubmit: (data: any) => void;
     strategy?: any; // undefined = create mode, defined = edit mode
+    /** temp strategies: recipient is locked to the granted mailbox address */
+    lockToPattern?: string;
 }
 
-const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy }: Props) => {
+const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPattern }: Props) => {
     const formRef = useRef<HTMLFormElement>(null);
     const isEdit = !!strategy;
     const [enabled, setEnabled] = useState("1");
@@ -45,7 +47,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy }: Props) 
             id: isEdit ? strategy.id : undefined,
             name: formData.name.toString().trim(),
             from_pattern: formData.fromPattern.toString().trim() || "*",
-            to_pattern: formData.toPattern.toString().trim() || "*",
+            to_pattern: lockToPattern ?? (formData.toPattern.toString().trim() || "*"),
             subject_pattern: formData.subjectPattern.toString().trim() || "*",
             forward_to: formData.forwardTo.toString().trim(),
             enabled: Number(enabled),
@@ -80,12 +82,16 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy }: Props) 
                     </div>
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="strategy-to">收件人</Label>
-                        <Input
-                            id="strategy-to"
-                            name="toPattern"
-                            placeholder="* 匹配所有人"
-                            defaultValue={isEdit ? strategy.to_pattern : ""}
-                        />
+                        {lockToPattern ? (
+                            <Input id="strategy-to" value={lockToPattern} disabled />
+                        ) : (
+                            <Input
+                                id="strategy-to"
+                                name="toPattern"
+                                placeholder="* 匹配所有人"
+                                defaultValue={isEdit ? strategy.to_pattern : ""}
+                            />
+                        )}
                     </div>
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="strategy-subject">主题匹配</Label>

@@ -3,6 +3,8 @@ import { StrategyEntity } from "../../../shared/modules/strategy/strategy.entity
 import { SettingsService } from "../settings/settings.service";
 
 const strategyRepository: Repository<StrategyEntity> = Repository.instance("Strategy");
+const grantRepository: Repository<import("../../../shared/modules/mailbox/mailbox-grant.entity").MailboxGrantEntity> =
+    Repository.instance("MailboxGrant");
 
 export class StrategyService {
     static async findList(where?: Partial<StrategyEntity>): Promise<StrategyEntity[]> {
@@ -20,7 +22,8 @@ export class StrategyService {
             await strategyRepository.update({ id }, data as any);
             return (await strategyRepository.findOne({ id }))!;
         } else {
-            // Create new
+            // Create new — default to enabled unless explicitly disabled
+            if (strategy.enabled === undefined) strategy.enabled = 1;
             return await strategyRepository.insert(strategy);
         }
     }
@@ -73,22 +76,35 @@ export class StrategyService {
         const allowedFrom = (SettingsService.get("allowed_from_domains") || SettingsService.get("allowed_domains") || "")
             .split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
 
-        // Already an allowed domain — keep original
-        if (allowedFrom.includes(fromDomain)) return rawEmail;
+        // Already a sendable domain — keep original
+        if (this.sendableDomains().includes(fromDomain)) return rawEmail;
 
         // Convert to localpart__domain: corfer.wei@yeah.net → corfer.wei__yeah_net
         const localPart = rawEmail.split("@")[0] || "unknown";
         const safeDomain = fromDomain.replace(/[^a-zA-Z0-9]/g, "_") || "unknown";
         const convertedLocal = `${localPart}__${safeDomain}`;
 
-        // Prefer recipient's domain if it's in allowed list
+        // Rewrite onto a domain that actually has a Resend key — preferring the
+        // recipient's domain — otherwise the forward is guaranteed to 403
+        const sendable = this.sendableDomains();
         const toDomain = (forwardTo.split("@")[1] || "").toLowerCase();
-        if (allowedFrom.includes(toDomain)) {
+        if (sendable.includes(toDomain)) {
             return `${convertedLocal}@${toDomain}`;
+        }
+        if (sendable.length) {
+            return `${convertedLocal}@${sendable[0]}`;
         }
 
         // Fallback to first allowed domain
         return `${convertedLocal}@${allowedFrom[0] || "example.com"}`;
+    }
+
+    /** Domains with an explicit Resend key in resend_api_keys. */
+    static sendableDomains(): string[] {
+        return (SettingsService.get("resend_api_keys") || "")
+            .split(",")
+            .map(pair => pair.split(":")[0].trim().toLowerCase())
+            .filter(Boolean);
     }
 
     /**
@@ -96,9 +112,17 @@ export class StrategyService {
      * Returns the first matching enabled strategy or null.
      */
     static async matchStrategy(from: string, to: string, subject: string): Promise<StrategyEntity | null> {
+        // temp strategies stay armed only while their grant is inside its
+        // window — expiry / revocation disarms them instantly, no writes
+        const now = Date.now();
+        const grantLive = new Map<string, boolean>();
+        await grantRepository.findEach((g) => {
+            grantLive.set(g.id, !g.delete_time && now >= g.start_time && now <= g.end_time);
+        });
         let best: StrategyEntity | null = null;
         await strategyRepository.findEach((s) => {
             if (best) return;
+            if (s.scope === "temp" && !grantLive.get(s.grant_id || "")) return;
             if (s.from_pattern && !matchGlob(from, s.from_pattern)) return;
             if (s.to_pattern && !matchGlob(to, s.to_pattern)) return;
             if (s.subject_pattern && !matchGlob(subject, s.subject_pattern)) return;
