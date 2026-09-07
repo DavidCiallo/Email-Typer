@@ -14,6 +14,11 @@ const SETTING_KEYS: Record<string, string> = {
     "client_url": "CLIENT_URL",
     "mailbox_sync_interval": "MAILBOX_SYNC_INTERVAL",
     "attachment_max_size": "ATTACHMENT_MAX_SIZE",
+    // Runtime config surfaced in the settings UI. `loadFromDb()` falls back
+    // to env when no row exists, so these are optional at boot.
+    "email_receive_api_key": "EMAIL_RECEIVE_API_KEY",
+    "push_rate_limit_per_min": "PUSH_RATE_LIMIT_PER_MIN",
+    "maildir_path": "MAILDIR_PATH",
 };
 
 export class SettingsService {
@@ -46,6 +51,14 @@ export class SettingsService {
     }
 
     static async set(key: string, value: string): Promise<void> {
+        // Saving an empty value clears any DB override and falls back to the
+        // env default — a row in the store always means "explicit override",
+        // so a cleared key can't shadow .env / built-in defaults after restart.
+        if (value === "") {
+            await settingsRepo.hardDelete({ key } as any);
+            cache.set(key, process.env[SETTING_KEYS[key] || ""] || "");
+            return;
+        }
         cache.set(key, value);
         const existing = await settingsRepo.findOne({ key } as any);
         if (existing) {

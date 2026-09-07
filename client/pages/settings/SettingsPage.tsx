@@ -16,6 +16,9 @@ const FIELD_LABELS: Record<string, string> = {
     allowed_domains: "允许注册的域名",
     allowed_from_domains: "允许发件的域名",
     client_url: "客户端地址",
+    email_receive_api_key: "推送/收信 API Key",
+    push_rate_limit_per_min: "推送频率上限（次/分钟，0 = 不限）",
+    maildir_path: "邮件存储目录（.eml）",
 };
 
 /** Display order & section grouping for known keys; unknown keys go to "其他". */
@@ -23,7 +26,10 @@ const SECTIONS: { title: string; keys: string[] }[] = [
     { title: "注册与域名", keys: ["allow_register", "allowed_domains", "allowed_from_domains"] },
     { title: "邮件发送", keys: ["resend_api_key", "resend_api_keys"] },
     { title: "其他", keys: ["client_url"] },
+    { title: "服务器", keys: ["email_receive_api_key", "push_rate_limit_per_min", "maildir_path"] },
 ];
+
+const ENV_ONLY_HINT = "端口、管理员账号、SECRET、DATA_DIR 仍只支持 .env 配置";
 
 export default function SettingsPage() {
     const [entries, setEntries] = useState<SettingsEntry[]>([]);
@@ -166,6 +172,9 @@ export default function SettingsPage() {
                                     <CardTitle>{section.title}</CardTitle>
                                 </CardHeader>
                                 <CardContent className="flex flex-col gap-4">
+                                    {section.title === "服务器" && (
+                                        <p className="text-muted-foreground text-xs">{ENV_ONLY_HINT}</p>
+                                    )}
                                     {section.entries.map(e => (
                                         <div key={e.key} className="flex flex-col gap-2">
                                             <Label htmlFor={`setting-${e.key}`}>
