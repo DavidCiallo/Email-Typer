@@ -29,6 +29,7 @@ export class SendLogService {
         subject: string;
         html: string;
         channel: string;
+        attachments?: { filename: string; content: string; size: number }[] | null;
     }): Promise<SendLogEntity> {
         return await sendLogRepository.insert({
             ...entry,

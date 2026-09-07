@@ -18,4 +18,6 @@ export interface SendLogEntity extends BaseEntity {
     channel: string;
     /** failure reason when status = failed */
     error: string;
+    /** attachment payloads — needed by external channel scripts */
+    attachments: { filename: string; content: string; size: number }[] | null;
 }

@@ -118,11 +118,20 @@ async function send(request: EmailSendRequest) {
     // Every send attempt is logged. Domains with a Resend key go out
     // immediately (sent / failed); the rest stay pending as a task for an
     // external channel, which completes them via send-log/update.
+    const attachments = (request.email.attachments || [])
+        .filter((a) => a.filename && a.content)
+        .map((a) => ({ filename: a.filename.slice(0, 200), content: a.content.replace(/\s/g, "") }));
+    const totalBase64 = attachments.reduce((n, a) => n + a.content.length, 0);
+    if (totalBase64 > 40 * 1024 * 1024) throw "附件总大小超限";
+
     const channel = SendLogService.resolveResendKey(from) ? "resend" : "external";
-    const log = await SendLogService.create({ from, to, subject, html, channel });
+    const log = await SendLogService.create({
+        from, to, subject, html, channel,
+        attachments: attachments.map((a) => ({ ...a, size: Math.round(a.content.length * 3 / 4) })),
+    });
 
     if (channel === "resend") {
-        const ok = await sendEmail({ from, to, subject, html });
+        const ok = await sendEmail({ from, to, subject, html, attachments });
         await SendLogService.setStatus(log.id, ok ? "sent" : "failed", ok ? "" : "Resend send failed");
         if (!ok) throw "Failed to send email";
         return { status: "sent" };
@@ -146,7 +155,14 @@ async function sendLogList(request: SendLogListRequest) {
     const where: Record<string, any> = {};
     if (request.status) where.status = request.status;
     const { list, total } = await SendLogService.findList(where, request.limit, request.offset);
-    return { list, total };
+    // attachment payloads only travel when explicitly requested (external scripts)
+    const trimmed = request.include_content
+        ? list
+        : list.map((r) => ({
+            ...r,
+            attachments: r.attachments?.map(({ filename, size }) => ({ filename, size })) || null,
+        }));
+    return { list: trimmed, total };
 }
 
 async function sendLogUpdate(request: SendLogUpdateRequest) {
