@@ -37,29 +37,29 @@ export async function mounthttp(req: Request, mounts: RouteMount[]): Promise<Res
             if (!handler) continue;
 
             const auth = req.headers.get("token") || req.headers.get("x-api-key") || req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
-            let requestBody: Record<string, any> | null = {};
+            // headers are mounted first so body-less requests (auth via
+            // x-api-key / x-tauth headers only) still reach handlers intact
+            const __headers: Record<string, string> = Object.fromEntries((req.headers as any).entries());
+            let requestBody: Record<string, any> = {};
             try {
                 const contentType = req.headers.get("content-type") || "";
-                const rawHeaders = Object.fromEntries((req.headers as any).entries());
                 const rawBody = await req.text();
                 if (contentType.includes("application/json")) {
-                    requestBody = JSON.parse(rawBody);
+                    requestBody = rawBody ? JSON.parse(rawBody) : {};
                 } else if (contentType.includes("application/x-www-form-urlencoded")) {
-                    const params = new URLSearchParams(rawBody);
-                    requestBody = Object.fromEntries(params.entries());
-                } else {
+                    requestBody = Object.fromEntries(new URLSearchParams(rawBody).entries());
+                } else if (rawBody) {
                     try {
                         requestBody = JSON.parse(rawBody);
                     } catch {
-                        const params = new URLSearchParams(rawBody);
-                        requestBody = Object.fromEntries(params.entries());
+                        requestBody = Object.fromEntries(new URLSearchParams(rawBody).entries());
                     }
                 }
-                (requestBody as any).__raw_body = rawBody;
-                (requestBody as any).__headers = rawHeaders;
             } catch (e) {
-                requestBody = null;
+                console.error("[mount] failed to parse request body:", e);
             }
+            (requestBody as any).__raw_body = (requestBody as any).__raw_body ?? "";
+            (requestBody as any).__headers = __headers;
             let requertQuery: Record<string, string> | null = {};
             try {
                 requertQuery = Object.fromEntries(url.searchParams.entries());
