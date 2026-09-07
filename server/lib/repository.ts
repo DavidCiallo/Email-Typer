@@ -365,6 +365,54 @@ class Repository<
         return this.update(where, { delete_time: now } as Partial<T>);
     }
 
+    /**
+     * Single-pass read-modify-write for a whole collection: each row is handed
+     * to `patch` (which returns the new row, or null to skip writing it) and
+     * the file is rewritten at most once. Where a bulk update would otherwise
+     * rewrite the file once per matched row (e.g. re-evaluating every email
+     * against safety rules), this collapses N rewrites into one.
+     */
+    async patchAll(
+        patch: (row: T) => Partial<T> | null,
+        config?: { includeDeleted?: boolean },
+    ): Promise<number> {
+        return this.withLock(async () => {
+            const file = this.filePath();
+            if (!fs.existsSync(file)) return 0;
+            const includeDeleted = config?.includeDeleted ?? false;
+
+            const content = fs.readFileSync(file, "utf-8");
+            const lines = content.split("\n");
+            const out: string[] = [];
+            const now = Date.now();
+            let changed = 0;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    out.push(line);
+                    continue;
+                }
+                const row = JSON.parse(trimmed);
+                if (!includeDeleted && row.delete_time) {
+                    out.push(line);
+                    continue;
+                }
+                const patchData = patch(row);
+                if (patchData) {
+                    Object.assign(row, patchData, { update_time: now });
+                    changed++;
+                }
+                out.push(JSON.stringify(row));
+            }
+
+            if (changed > 0) {
+                fs.writeFileSync(file, out.join("\n") + "\n");
+            }
+            return changed;
+        });
+    }
+
     /** Clear all data — used before import */
     async truncate(): Promise<void> {
         return this.withLock(async () => {
