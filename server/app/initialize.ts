@@ -1,6 +1,6 @@
 import { AccountService } from "../modules/account/account.service";
 import { SettingsService } from "../modules/settings/settings.service";
-import { startEmailWatcher } from "../modules/email/email.service";
+import { EmailService, startEmailWatcher } from "../modules/email/email.service";
 import { MailboxSyncWorker } from "../modules/mailbox/sync.worker";
 import { config } from "dotenv";
 config();
@@ -27,6 +27,9 @@ export async function initialize() {
     // configurable on the settings page, though a running watcher only
     // picks it up after a restart.
     const maildirPath = SettingsService.get("maildir_path");
+    // Link legacy rows to their eml archive before the watcher starts, so
+    // its known-paths set is complete and no body is ever re-derived late.
+    await EmailService.migrateEmlIndex();
     if (maildirPath) {
         startEmailWatcher(maildirPath);
     }

@@ -571,3 +571,36 @@ export function stampHeadersBuffer(raw: Uint8Array, extra: Record<string, string
     const head = Object.entries(extra).map(([k, v]) => `${k}: ${v}\r\n`).join("");
     return Buffer.concat([Buffer.from(head, "utf-8"), raw]);
 }
+
+/**
+ * Rewrite (or insert) the top-level Date: header of a raw RFC822 message.
+ * Pushed mail must state its own time; stamping it into the archived file
+ * keeps re-scans consistent with the first ingest instead of drifting back
+ * to the file's arrival time. Header bytes round-trip through latin1 so
+ * 8bit body content is never decoded.
+ */
+export function withDateHeader(raw: Uint8Array, date: Date): Buffer {
+    const buf = Buffer.from(raw);
+    const dateLine = `Date: ${date.toUTCString()}`;
+    // locate the blank line separating headers from body ("\n\n" or "\n\r\n")
+    let sepStart = -1;
+    let sepEnd = -1;
+    for (let i = 0; i + 1 < buf.length; i++) {
+        if (buf[i] !== 0x0a) continue;
+        if (buf[i + 1] === 0x0a) { sepStart = i; sepEnd = i + 2; break; }
+        if (buf[i + 1] === 0x0d && i + 2 < buf.length && buf[i + 2] === 0x0a) { sepStart = i; sepEnd = i + 3; break; }
+    }
+    if (sepStart === -1) {
+        return Buffer.concat([Buffer.from(dateLine + "\r\n", "utf-8"), buf]);
+    }
+    let headEnd = sepStart;
+    if (headEnd > 0 && buf[headEnd - 1] === 0x0d) headEnd -= 1;
+    if (headEnd > 0 && buf[headEnd - 1] === 0x0a) headEnd -= 1;
+    const head = buf.subarray(0, headEnd).toString("latin1");
+    const lines = head.split(/\r\n|\r|\n/);
+    const idx = lines.findIndex((l) => /^date:/i.test(l));
+    if (idx >= 0) lines[idx] = dateLine;
+    else lines.unshift(dateLine);
+    const newHead = Buffer.from(lines.join("\r\n") + "\r\n\r\n", "utf-8");
+    return Buffer.concat([newHead, buf.subarray(sepEnd)]);
+}

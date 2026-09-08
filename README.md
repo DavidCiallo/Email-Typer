@@ -70,6 +70,10 @@ npm run build
 ```
 将在 dist 目录下生成前端静态打包文件，可部署到任何静态文件服务器中；同时生成bundle.mjs文件，可部署到任何支持Node.js的服务器中。
 
+## 数据与备份
+
+邮件索引（`data/email.jsonl`）只存元数据；**正文保存在 `eml/` 归档目录**（邮件详情按需从对应 eml 文件读取），附件在 `data/attachments/`。备份 / 迁移时请把 `data/` 与 `eml/` 一起带走；「导出数据」生成的 JSON 不含正文，导入后需配合原有 `eml/` 目录才能查看正文。
+
 ## Push API（外部邮件投递）
 
 外部系统凭「推送/收信 API Key」把邮件投递进来（`EMAIL_RECEIVE_API_KEY`）。该 key 可在「设置页 → 服务器 → 推送/收信 API Key」管理，留空则回退到 `.env` 中的 `EMAIL_RECEIVE_API_KEY`；未配置时推送会被拒绝（401）。支持跨域，适合脚本 / 浏览器自动化桥接受限邮箱：
@@ -79,17 +83,17 @@ npm run build
 curl -X POST http://localhost:3300/api/email/push \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"subject": "hi", "html": "<b>hello</b>", \
+  -d '{"time": 1730000000000, "subject": "hi", "html": "<b>hello</b>", \
        "attachments": [{"filename": "a.txt", "base64": "..."}]}'
 
 # 原始邮件透传（脚本已持有完整 .eml / RFC822 时）
-curl -X POST http://localhost:3300/api/email/push \
+curl -X POST "http://localhost:3300/api/email/push?time=1730000000000" \
   -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: message/rfc822" \
   --data-binary @mail.eml
 ```
 
-说明：JSON 体亦可用 `raw`（UTF-8 原文）或 `raw_base64` 字段透传原始邮件；带 `message_id` 可实现幂等重试（重复投递返回已存记录并标记 `duplicate`）；响应包含附件入库结果（超过大小上限的附件会列在 `skipped_files`）。默认每 Key 每分钟限 120 次，可在设置页或 `PUSH_RATE_LIMIT_PER_MIN` 调整（0 为不限）。
+说明：`time`（毫秒时间戳）**必填**——邮件时间以调用方提供为准，而非入库时刻；透传路径会用它覆盖邮件自身的 `Date` 头（同时修复抓取邮件 Date 缺失/异常的情况），重扫描保持一致。JSON 体亦可用 `raw`（UTF-8 原文）或 `raw_base64` 字段透传原始邮件；带 `message_id` 可实现幂等重试（重复投递返回已存记录并标记 `duplicate`）；响应包含附件入库结果（超过大小上限的附件会列在 `skipped_files`）。默认每 Key 每分钟限 120 次，可在设置页或 `PUSH_RATE_LIMIT_PER_MIN` 调整（0 为不限）。
 
 ## 许可证
 

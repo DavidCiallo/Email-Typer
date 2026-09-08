@@ -1,5 +1,4 @@
 import { formatEmail, blockLabel } from "../../methods/format";
-import { extractCodes } from "../../methods/verifycode";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
 import {
@@ -10,9 +9,9 @@ import {
     TableHeader,
     TableRow,
 } from "../../components/ui/table";
-import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { Archive, Paperclip } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { Paperclip } from "lucide-react";
 
 function formatTime(ts: number): string {
     const d = new Date(ts);
@@ -40,10 +39,11 @@ function formatTime(ts: number): string {
 }
 
 function CodeChips({ email }: { email: any }) {
-    const codes = extractCodes(email.text, email.html);
-    if (codes.length === 0) return null;
+    // codes are extracted server-side at ingest — list rows no longer carry bodies.
+    // The slot always renders (fixed height) so every row stays the same height.
+    const codes: string[] = email.codes || [];
     return (
-        <div className="mt-1 flex flex-wrap gap-1">
+        <div className="mt-1 flex h-5 flex-wrap gap-1">
             {codes.map((code) => (
                 <button
                     key={code}
@@ -62,23 +62,59 @@ function CodeChips({ email }: { email: any }) {
     );
 }
 
+function RowCheckbox({ checked, onClick }: { checked: boolean; onClick: () => void }) {
+    return (
+        <input
+            type="checkbox"
+            className="accent-primary size-4 cursor-pointer"
+            checked={checked}
+            onClick={(e) => e.stopPropagation()}
+            onChange={onClick}
+        />
+    );
+}
+
 const InboxTable = (params: {
     emailList: Array<any>,
     newIds: Set<string>,
+    selected: Set<string>,
+    onToggleSelect: (id: string) => void,
+    onSelectAll: () => void,
+    onArchiveSelected: () => void,
+    archivingSelection: boolean,
     onOpen: (email: any) => void,
-    onArchive: (id: string) => void,
 }) => {
-    const { emailList, newIds, onOpen, onArchive } = params;
+    const { emailList, newIds, selected, onToggleSelect, onSelectAll, onArchiveSelected, archivingSelection, onOpen } = params;
+    const allSelected = emailList.length > 0 && emailList.every((e) => selected.has(e.id));
     return (
         <div className="rounded-lg border bg-card shadow-xs">
             <Table className="table-fixed min-w-[820px]">
                 <TableHeader>
                     <TableRow>
-                        <TableHead className="w-52">发件人</TableHead>
-                        <TableHead className="w-52">收件人</TableHead>
-                        <TableHead>主题</TableHead>
-                        <TableHead className="w-24">时间</TableHead>
-                        <TableHead className="w-40 text-right">操作</TableHead>
+                        <TableHead className="w-14 h-12 pl-4">
+                            <RowCheckbox checked={allSelected} onClick={onSelectAll} />
+                        </TableHead>
+                        <TableHead className="w-52 h-12">发件人</TableHead>
+                        <TableHead className="w-52 h-12">收件人</TableHead>
+                        <TableHead className="h-12">主题</TableHead>
+                        {/* Bulk actions live here in the header — no layout jump when a
+                            selection starts; the widened cell keeps 时间 left-aligned */}
+                        <TableHead className="w-64 h-12">
+                            <div className="flex items-center justify-between gap-2">
+                                <span>时间</span>
+                                {selected.size > 0 && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2 text-xs"
+                                        disabled={archivingSelection}
+                                        onClick={onArchiveSelected}
+                                    >
+                                        归档选中 ({selected.size})
+                                    </Button>
+                                )}
+                            </div>
+                        </TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -95,9 +131,15 @@ const InboxTable = (params: {
                                 className="cursor-pointer"
                                 onClick={() => onOpen(email)}
                             >
+                                <TableCell className="w-14 pl-4">
+                                    <RowCheckbox
+                                        checked={selected.has(email.id)}
+                                        onClick={() => onToggleSelect(email.id)}
+                                    />
+                                </TableCell>
                                 <TableCell>
                                     <div className="overflow-hidden">
-                                        <div className="flex items-center gap-1.5">
+                                        <div className="flex h-5 items-center gap-1.5">
                                             {newIds.has(email.id) && (
                                                 <span className="bg-primary size-1.5 shrink-0 rounded-full" aria-label="新邮件" />
                                             )}
@@ -105,27 +147,23 @@ const InboxTable = (params: {
                                                 {formatEmail(email.from).name}
                                             </div>
                                         </div>
-                                        {formatEmail(email.from).email && (
-                                            <div className="text-muted-foreground truncate text-xs" title={formatEmail(email.from).email}>
-                                                {formatEmail(email.from).email}
-                                            </div>
-                                        )}
+                                        <div className="text-muted-foreground h-4 truncate text-xs" title={formatEmail(email.from).email}>
+                                            {formatEmail(email.from).email}
+                                        </div>
                                     </div>
                                 </TableCell>
                                 <TableCell>
                                     <div className="overflow-hidden">
-                                        <div className="truncate" title={formatEmail(email.to).name}>
+                                        <div className="h-5 truncate" title={formatEmail(email.to).name}>
                                             {formatEmail(email.to).name}
                                         </div>
-                                        {formatEmail(email.to).email && (
-                                            <div className="text-muted-foreground truncate text-xs" title={formatEmail(email.to).email}>
-                                                {formatEmail(email.to).email}
-                                            </div>
-                                        )}
+                                        <div className="text-muted-foreground h-4 truncate text-xs" title={formatEmail(email.to).email}>
+                                            {formatEmail(email.to).email}
+                                        </div>
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <div className="flex min-w-0 items-center gap-1.5">
+                                    <div className="flex h-5 min-w-0 items-center gap-1.5">
                                         {email.blocked === 1 && (
                                             <Badge variant="destructive" className="shrink-0" title={`命中规则：${email.block_rule}`}>
                                                 拦截·{blockLabel(email.blocked_by)}
@@ -140,26 +178,6 @@ const InboxTable = (params: {
                                 </TableCell>
                                 <TableCell className="text-muted-foreground w-24 whitespace-nowrap">
                                     <div>{formatTime(Number(email.time))}</div>
-                                </TableCell>
-                                <TableCell className="w-40">
-                                    <div className="flex flex-row justify-end gap-2">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={(e) => { e.stopPropagation(); onOpen(email); }}
-                                        >
-                                            查看
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-destructive hover:text-destructive"
-                                            onClick={(e) => { e.stopPropagation(); onArchive(email.id); }}
-                                        >
-                                            <Archive className="size-3.5" />
-                                            归档
-                                        </Button>
-                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))

@@ -11,6 +11,7 @@ import { AccountService } from "./account.service";
 import { requireAdmin } from "../auth/auth.service";
 import Repository from "../../lib/repository";
 import { EmailEntity } from "../../../shared/modules/email/email.entity";
+import { EmailService } from "../email/email.service";
 
 async function list(request: AccountListRequest) {
     request = AccountListRequest.self(request);
@@ -87,6 +88,7 @@ async function importData(request: AccountImportRequest) {
             const chunk = items.slice(i, i + 1000);
             imported[name] = (imported[name] || 0) + await repo.batchInsert(chunk);
         }
+        if (name === "emails") EmailService.clearIndexedEml();
     }
 
     return { imported };

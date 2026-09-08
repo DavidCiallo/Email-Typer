@@ -8,6 +8,7 @@ import {
     EmailScanRequest,
     EmailDeleteRequest,
     EmailRestoreRequest,
+    EmailPurgeRequest,
     EmailPushRequest,
     EmailAttachmentRequest,
     SendLogListRequest,
@@ -18,7 +19,7 @@ import { SettingsService } from "../settings/settings.service";
 import { EmailService, sendEmail, maildirRoot } from "./email.service";
 import { SendLogService } from "./send-log.service";
 import { MailboxService } from "../mailbox/mailbox.service";
-import { composeRawEmail, parseRawEmail, ComposeAttachment } from "../../lib/mime";
+import { composeRawEmail, parseRawEmail, ComposeAttachment, withDateHeader } from "../../lib/mime";
 import { getDataDir } from "../../lib/repository";
 import { getIdentifyByVerify } from "../auth/auth.service";
 import { GrantService, TauthSession } from "../mailbox/grant.service";
@@ -60,6 +61,11 @@ async function list(request: EmailListRequest) {
     if (!scope.tauth && request.account_id) {
         where.account_id = request.account_id;
     }
+    // mailbox filter — recipient address contains-match (works for catch-all
+    // and legacy rows that never got a mailbox_id)
+    if (request.to) {
+        where.to = { $contains: request.to };
+    }
     const q = (request.q || "").trim();
     if (q) {
         where.$or = [
@@ -81,6 +87,16 @@ async function list(request: EmailListRequest) {
     if (request.mailbox_id) {
         where.mailbox_id = request.mailbox_id;
     }
+    // content filters (flags recorded at ingest / migration)
+    if (request.has_code === true) {
+        where.has_code = 1;
+    }
+    if (request.has_links === true) {
+        where.has_links = 1;
+    }
+    if (request.has_attachments === true) {
+        where.attachments = { $ne: null };
+    }
 
     const result = await EmailService.findList(where, {
         limit: request.limit,
@@ -93,8 +109,9 @@ async function list(request: EmailListRequest) {
         from: e.from,
         to: e.to,
         subject: e.subject,
-        html: e.html,
-        text: e.text,
+        // bodies stay in the eml archive — the list carries the ingest-time
+        // verification codes so the client doesn't need bodies here
+        codes: e.codes || [],
         time: e.time,
         account_id: e.account_id,
         blocked: e.blocked || 0,
@@ -121,7 +138,9 @@ async function detail(request: EmailDetailRequest) {
     const data = await EmailService.findById(request.id);
     if (!data) throw "Email not found";
     if (scope.tauth && !inTauthScope(scope.tauth, data)) throw "Email not found";
-    return data;
+    // hydrate the body from the eml archive (rows store metadata only)
+    const body = EmailService.readBody(data);
+    return { ...data, html: body.html, text: body.text };
 }
 
 async function send(request: EmailSendRequest) {
@@ -317,6 +336,15 @@ async function push(request: EmailPushRequest) {
     if (!masterKey || !timingSafeEq(apiKey, masterKey)) throw "Unauthorized";
     if (!allowPush(apiKey)) throw "推送频率超限（每分钟上限），请稍后再试";
 
+    // Mandatory caller-supplied mail time — stored verbatim, never the
+    // ingest moment. Also accepted as a `time` query param (message/rfc822
+    // bodies have no JSON payload to carry it).
+    const mailTime = Number(request.time);
+    if (!Number.isFinite(mailTime) || mailTime <= 0) {
+        throw "Missing or invalid `time` — pushes must state the mail's time (ms since epoch)";
+    }
+    const mailDate = new Date(mailTime);
+
     let to = (request.to || "").trim();
 
     // All API pushes share one archive folder — the recipient domain lives in
@@ -341,6 +369,10 @@ async function push(request: EmailPushRequest) {
             rawBuf = Buffer.from(rawBodyField, "utf-8");
         }
         if (rawBuf.length === 0) throw "Empty raw email";
+        // The caller's time is authoritative — stamp it over the mail's own
+        // Date header (also fixes scraped mails with a missing/garbage one),
+        // so the first ingest and later re-scans agree on the time.
+        rawBuf = withDateHeader(rawBuf, mailDate);
         // Message-ID and recipient live inside the mail — needed for
         // idempotent dedup and for mailbox association when `to` is omitted
         const parsedInline = parseRawEmail(rawBuf);
@@ -374,6 +406,7 @@ async function push(request: EmailPushRequest) {
         text: text || undefined,
         attachments: attachments.length ? attachments : undefined,
         messageId: request.message_id,
+        date: mailDate,
     });
 
     const stored = await EmailService.ingestRaw(raw, await resolveIngestOptions());
@@ -439,7 +472,16 @@ async function restore(request: EmailRestoreRequest) {
     return {};
 }
 
+async function purgeEmail(request: EmailPurgeRequest) {
+    request = EmailPurgeRequest.self(request);
+    const email = getIdentifyByVerify(request.auth || "");
+    if (!email) throw "Unauthorized";
+    const result = await EmailService.purge(request.id);
+    if (!result) throw "Email not found";
+    return {};
+}
+
 export const emailMount = {
     routes: emailRoutes,
-    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore, push, attachment, sendLogList, sendLogUpdate },
+    handlers: { list, detail, send, receive, scan, delete: deleteEmail, restore, purge: purgeEmail, push, attachment, sendLogList, sendLogUpdate },
 };

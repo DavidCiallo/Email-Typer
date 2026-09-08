@@ -86,7 +86,11 @@ const SafetyPage = () => {
             body.id = editingEntry.id;
         }
 
-        SafetyRouter.save({ entry: body }, () => {
+        SafetyRouter.save({ entry: body }, (res: any) => {
+            if (res?.success === false) {
+                toast({ title: res.message || "保存失败", color: "danger" });
+                return;
+            }
             toast({ title: editingEntry ? "修改成功" : "添加成功", color: "primary" });
             setModalOpen(false);
             refreshList();
@@ -106,7 +110,7 @@ const SafetyPage = () => {
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
             <p className="text-muted-foreground text-sm">
-                规则在收信时评估：命中黑名单或敏感词的邮件会标记为「已拦截」并跳过转发（仍会入库，可在收件箱用盾牌按钮筛选查看）；白名单发件人优先放行。修改后立即生效。
+                命中黑名单或敏感词的邮件会标记为「已拦截」并跳过转发；白名单发件人优先放行。
             </p>
             <div className="flex flex-row items-center justify-between">
                 <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">

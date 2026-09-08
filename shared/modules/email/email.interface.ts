@@ -13,22 +13,30 @@ export class EmailListRequest implements BaseRequest {
     public limit?: number;
     public offset?: number;
     public account_id?: string;
+    public to?: string;          // recipient address contains-match (mailbox filter)
     public q?: string;
     public archived?: boolean;
     public blocked?: boolean;
     public source?: string;
     public mailbox_id?: string;
+    public has_code?: boolean;   // body contained verification codes
+    public has_links?: boolean;  // body contained http(s) links
+    public has_attachments?: boolean;
 
     constructor(origin: Partial<EmailListRequest>) {
         origin.auth && (this.auth = origin.auth);
         this.limit = origin.limit;
         this.offset = origin.offset;
         this.account_id = origin.account_id;
+        this.to = origin.to;
         this.q = origin.q;
         this.archived = origin.archived;
         this.blocked = origin.blocked;
         this.source = origin.source;
         this.mailbox_id = origin.mailbox_id;
+        this.has_code = origin.has_code;
+        this.has_links = origin.has_links;
+        this.has_attachments = origin.has_attachments;
     }
     static self(unsafe: EmailListRequest) {
         return new EmailListRequest(unsafe);
@@ -296,6 +304,31 @@ export class EmailRestoreResponse implements BaseResponse<null> {
     }
 }
 
+// Permanently delete an email (index row + stored attachments) — irrevocable
+export class EmailPurgeRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+
+    constructor(origin: Partial<EmailPurgeRequest>) {
+        if (!origin.id) throw new Error("Email id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+    }
+    static self(unsafe: EmailPurgeRequest) {
+        return new EmailPurgeRequest(unsafe);
+    }
+}
+
+export class EmailPurgeResponse implements BaseResponse<null> {
+    public success: boolean;
+    public message: string;
+
+    constructor(origin: EmailPurgeResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+    }
+}
+
 // Push email via API (auth: the receive master key, sent as x-api-key)
 export interface EmailPushAttachment {
     filename: string;
@@ -312,6 +345,11 @@ export class EmailPushRequest implements BaseRequest {
     public text?: string;
     public attachments?: EmailPushAttachment[];
     public message_id?: string;
+    // Mandatory — the mail's own time (ms since epoch). Pushed mail is stored
+    // with exactly this time (never the ingest moment); on the raw passthrough
+    // path it replaces the Date header in the archived file so re-scans agree.
+    // Can also arrive as a `time` query param for message/rfc822 bodies.
+    public time: number;
     // Raw MIME passthrough — for bridge scripts that already hold a full
     // RFC 822 message. Either a complete message/rfc822 request body
     // (Content-Type: message/rfc822) or one of these fields.
@@ -327,6 +365,7 @@ export class EmailPushRequest implements BaseRequest {
         this.text = origin.text;
         this.attachments = origin.attachments;
         this.message_id = origin.message_id;
+        this.time = origin.time as number;
         this.raw = origin.raw;
         this.raw_base64 = origin.raw_base64;
     }

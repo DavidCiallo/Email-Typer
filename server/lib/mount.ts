@@ -41,9 +41,10 @@ export async function mounthttp(req: Request, mounts: RouteMount[]): Promise<Res
             // x-api-key / x-tauth headers only) still reach handlers intact
             const __headers: Record<string, string> = Object.fromEntries((req.headers as any).entries());
             let requestBody: Record<string, any> = {};
+            let rawBody = "";
             try {
                 const contentType = req.headers.get("content-type") || "";
-                const rawBody = await req.text();
+                rawBody = await req.text();
                 if (contentType.includes("application/json")) {
                     requestBody = rawBody ? JSON.parse(rawBody) : {};
                 } else if (contentType.includes("application/x-www-form-urlencoded")) {
@@ -58,7 +59,7 @@ export async function mounthttp(req: Request, mounts: RouteMount[]): Promise<Res
             } catch (e) {
                 console.error("[mount] failed to parse request body:", e);
             }
-            (requestBody as any).__raw_body = (requestBody as any).__raw_body ?? "";
+            (requestBody as any).__raw_body = rawBody;
             (requestBody as any).__headers = __headers;
             let requertQuery: Record<string, string> | null = {};
             try {
