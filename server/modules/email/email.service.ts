@@ -4,8 +4,9 @@ import { MailboxEntity } from "../../../shared/modules/mailbox/mailbox.entity";
 import { SettingsService } from "../settings/settings.service";
 import { SafetyService } from "../safety/safety.service";
 import { broadcastWsMessage } from "../../lib/mount";
-import { parseRawEmail, stampHeadersBuffer } from "../../lib/mime";
+import { parseRawEmail, stampHeadersBuffer, composeRawEmail } from "../../lib/mime";
 import { deliverToMaildir } from "../../lib/maildir";
+import { extractCodes, extractLinks } from "../../../shared/lib/extract";
 import { nanoid } from "nanoid";
 import chokidar from "chokidar";
 import path from "path";
@@ -135,6 +136,11 @@ export class EmailService {
      *  file must never pass the dedup check concurrently. */
     private static ingestChain: Promise<any> = Promise.resolve();
 
+    /** Archive paths already present in the index. Lets the watcher skip the
+     *  per-file dedup scan (a full index read) for every file it rediscovers
+     *  at startup; cleared when an import replaces the whole collection. */
+    private static indexedEml = new Set<string>();
+
     static async findList(where?: Partial<EmailEntity>, config?: { limit?: number; offset?: number; includeDeleted?: boolean }): Promise<{ list: EmailEntity[]; total: number }> {
         const { limit, offset = 0, includeDeleted = false } = config ?? {};
         const total = await emailRepository.count(where, undefined, includeDeleted);
@@ -175,14 +181,29 @@ export class EmailService {
         return await emailRepository.atomicPatch({ id } as any, () => ({ delete_time: null }), true);
     }
 
+    /** Permanently remove a mail: index row plus its stored attachment files. */
+    static async purge(id: string): Promise<boolean> {
+        const row = await emailRepository.findOne({ id } as any, true);
+        const deleted = await emailRepository.hardDelete({ id } as any);
+        if (row?.eid) {
+            try {
+                fs.rmSync(path.join(getDataDir(), "attachments", row.eid), { recursive: true, force: true });
+            } catch (e) {
+                console.error("[EmailService] Failed to remove attachments for purge:", id, e);
+            }
+        }
+        return deleted;
+    }
+
     /**
      * Post-storage pipeline shared by all ingest paths:
      * forward only clean mail, then broadcast to dashboard clients.
+     * The body travels in memory — stored rows no longer carry it.
      */
-    private static async finalizeIngest(stored: EmailEntity, blocked: boolean): Promise<void> {
+    private static async finalizeIngest(stored: EmailEntity, blocked: boolean, body: { html: string; text: string }): Promise<void> {
         if (!blocked && await EmailService.shouldForward(stored)) {
             const { StrategyService } = await import("../strategy/strategy.service");
-            StrategyService.matchAndForward(stored).catch(e => {
+            StrategyService.matchAndForward(stored, body).catch(e => {
                 console.error("[EmailService] Strategy forward failed:", e);
             });
         }
@@ -257,13 +278,13 @@ export class EmailService {
      * (watcher + direct call) cannot slip past the dedup check.
      * Returns null when the mail is a duplicate or unparseable.
      */
-    static ingestBuffer(raw: Uint8Array): Promise<EmailEntity | null> {
-        const run = EmailService.ingestChain.then(() => EmailService.ingestBufferInner(raw));
+    static ingestBuffer(raw: Uint8Array, emlPath?: string): Promise<EmailEntity | null> {
+        const run = EmailService.ingestChain.then(() => EmailService.ingestBufferInner(raw, emlPath));
         EmailService.ingestChain = run.catch(() => null);
         return run;
     }
 
-    private static async ingestBufferInner(raw: Uint8Array): Promise<EmailEntity | null> {
+    private static async ingestBufferInner(raw: Uint8Array, emlPath?: string): Promise<EmailEntity | null> {
         const parsed = parseRawEmail(raw);
         if (!parsed) return null;
 
@@ -284,18 +305,25 @@ export class EmailService {
         const eid = nanoid(12);
         const metas = EmailService.storeAttachments(eid, parsed.attachments);
 
+        // Bodies live only in the archived eml file (`eml` path); the index row
+        // keeps metadata plus the ingest-time verification codes.
+        const codes = extractCodes(parsed.text, parsed.html);
         const email: Partial<EmailEntity> = {
             eid,
             from: parsed.from || "",
             to: parsed.to || "",
             subject: parsed.subject || "",
-            html: parsed.html || "",
-            text: parsed.text || "",
+            html: "",
+            text: "",
             time: parsed.time || Date.now(),
             account_id: parsed.account_id || "",
             message_id: parsed.message_id || "",
             source: parsed.source || "maildir",
             mailbox_id: parsed.mailbox_id || "",
+            eml: emlPath || "",
+            codes,
+            has_code: codes.length ? 1 : 0,
+            has_links: extractLinks(parsed.text, parsed.html).length ? 1 : 0,
             attachments: metas,
             blocked: verdict.blocked ? 1 : 0,
             blocked_by: verdict.blockedBy,
@@ -303,6 +331,7 @@ export class EmailService {
         };
 
         const stored = await emailRepository.insert(email);
+        if (emlPath) EmailService.indexedEml.add(emlPath);
 
         // A copy of our own forward that re-entered the system (remote
         // auto-forwarders, scrapers pushing back over the API): store it but
@@ -311,21 +340,182 @@ export class EmailService {
         const forwardedCopy = parsed.forwarded
             || (parsed.html || "").slice(0, 300).includes("原发件人：")
             || (parsed.text || "").startsWith("原发件人：");
-        await EmailService.finalizeIngest(stored, verdict.blocked || forwardedCopy);
+        await EmailService.finalizeIngest(
+            stored,
+            verdict.blocked || forwardedCopy,
+            { html: parsed.html || "", text: parsed.text || "" },
+        );
 
         return stored;
     }
 
+    /**
+     * Read a mail's body back from its archived RFC822 file. Rows predating
+     * the index/body split (or whose archive went missing) fall back to any
+     * inline body they still carry.
+     */
+    static readBody(e: { eml?: string; html?: string; text?: string }): { html: string; text: string } {
+        if (!e.eml) return { html: e.html || "", text: e.text || "" };
+        const rel = e.eml.replace(/\\/g, "/");
+        if (rel.includes("..")) return { html: "", text: "" };
+        try {
+            const parsed = parseRawEmail(fs.readFileSync(path.join(maildirRoot(), rel)));
+            return { html: parsed?.html || "", text: parsed?.text || "" };
+        } catch (err) {
+            console.error("[EmailService] Failed to read archived body:", rel, err);
+            return { html: "", text: "" };
+        }
+    }
+
+    /** Load every indexed archive path so the watcher can skip known files. */
+    static async warmIndexedEml(): Promise<void> {
+        try {
+            const rows = await emailRepository.find({}, { includeDeleted: true });
+            for (const row of rows) {
+                if (row.eml) EmailService.indexedEml.add(row.eml);
+            }
+        } catch (e) {
+            console.error("[EmailService] Failed to warm indexed eml paths:", e);
+        }
+    }
+
+    /** Called when an import replaces the whole collection. */
+    static clearIndexedEml(): void {
+        EmailService.indexedEml.clear();
+    }
+
+    /** True when the archive path already belongs to an indexed row (watcher fast path). */
+    static isIndexedEml(rel: string): boolean {
+        return EmailService.indexedEml.has(rel);
+    }
+
+    /**
+     * One-time migrations for the index/body split:
+     *  1. Rows created before the split carry inline bodies but no archive
+     *     path — walk the maildir once, match files to rows (Message-ID
+     *     first, then the same from/to/subject/time fingerprint dedup uses),
+     *     record the archive path + codes and strip the inline bodies.
+     *  2. Rows already linked on earlier boots but missing the has_code /
+     *     has_links flags get them backfilled from their archive.
+     * Idempotent: a row needs work only while it lacks an `eml` path or the
+     * flags, so settled boots pay one index read.
+     */
+    static async migrateEmlIndex(): Promise<void> {
+        const rows = await emailRepository.find({}, { includeDeleted: true });
+        for (const row of rows) {
+            if (row.eml) EmailService.indexedEml.add(row.eml);
+        }
+
+        type RowPatch = { eml?: string; codes?: string[]; has_code: number; has_links: number };
+        const flagOf = (codes: string[], links: string[]) => ({ has_code: codes.length ? 1 : 0, has_links: links.length ? 1 : 0 });
+        const patches = new Map<string, RowPatch>();
+
+        // (2) flag backfill for rows linked before the flags existed
+        for (const row of rows) {
+            if (!row.eml || row.has_code !== undefined) continue;
+            const body = EmailService.readBody(row);
+            const codes = extractCodes(body.text, body.html);
+            patches.set(row.id as string, { codes, ...flagOf(codes, extractLinks(body.text, body.html)) });
+        }
+
+        // (1) link legacy inline-body rows to their archive
+        const pending = rows.filter(r => !r.eml && ((r.html || "").length + (r.text || "").length > 0));
+
+        if (patches.size === 0 && pending.length === 0) return;
+
+        if (pending.length > 0) {
+            const root = path.resolve(maildirRoot());
+            if (!fs.existsSync(root)) {
+                console.warn(`[EmailService] Migration: maildir ${root} not found — ${pending.length} rows keep inline bodies`);
+            } else {
+                const byMessageId = new Map<string, EmailEntity>();
+                const byFingerprint = new Map<string, EmailEntity>();
+                for (const row of pending) {
+                    if (row.message_id) byMessageId.set(row.message_id, row);
+                    byFingerprint.set(`${row.from}|${row.to}|${row.subject}|${row.time}`, row);
+                }
+
+                console.log(`[EmailService] Migration: scanning ${root} to link ${pending.length} legacy rows to their archive...`);
+                for (const filePath of EmailService.walkFiles(root)) {
+                    let parsed;
+                    try {
+                        parsed = parseRawEmail(fs.readFileSync(filePath));
+                    } catch {
+                        continue;
+                    }
+                    if (!parsed) continue;
+                    const rel = EmailService.relativizeEmlPath(path.resolve(filePath));
+                    if (EmailService.indexedEml.has(rel)) continue; // already owned by a migrated row
+                    const row = (parsed.message_id && byMessageId.get(parsed.message_id))
+                        || byFingerprint.get(`${parsed.from}|${parsed.to}|${parsed.subject}|${parsed.time}`);
+                    if (!row || patches.has(row.id as string)) continue;
+                    const codes = extractCodes(parsed.text, parsed.html);
+                    patches.set(row.id as string, { eml: rel, codes, ...flagOf(codes, extractLinks(parsed.text, parsed.html)) });
+                    EmailService.indexedEml.add(rel);
+                }
+
+                // Rows nothing in the archive matched (degenerate legacy rows
+                // with no message_id and an unmatchable fingerprint) get a
+                // synthesized archive file built from their inline body —
+                // otherwise they would stay "pending" forever and trigger a
+                // full rescan on every boot.
+                for (const row of pending) {
+                    if (patches.has(row.id as string)) continue;
+                    const html = row.html || "";
+                    const text = row.text || "";
+                    const raw = composeRawEmail({
+                        from: row.from || "",
+                        to: row.to || "",
+                        subject: row.subject || "",
+                        html: html || undefined,
+                        text: text || undefined,
+                        date: new Date(row.time || Date.now()),
+                    });
+                    const rel = deliverToMaildir(maildirRoot(), "_recovered", raw)
+                        .slice(path.resolve(maildirRoot()).length + 1).replace(/\\/g, "/");
+                    const codes = extractCodes(text, html);
+                    patches.set(row.id as string, { eml: rel, codes, ...flagOf(codes, extractLinks(text, html)) });
+                    EmailService.indexedEml.add(rel);
+                }
+            }
+        }
+
+        const updated = await emailRepository.patchAll((row) => {
+            const patch = patches.get(row.id as string);
+            if (!patch) return null;
+            return {
+                ...(patch.eml !== undefined ? { eml: patch.eml } : {}),
+                ...(patch.codes !== undefined ? { codes: patch.codes } : {}),
+                has_code: patch.has_code,
+                has_links: patch.has_links,
+                html: "",
+                text: "",
+            } as any;
+        }, { includeDeleted: true });
+        console.log(`[EmailService] Migration: updated ${updated}/${patches.size} rows (archive links + content flags)`);
+    }
     /** Ingest an email file from disk (watcher, IMAP sync, batch import). */
     static async ingestFile(filePath: string): Promise<EmailEntity | null> {
         const resolvedPath = path.resolve(filePath);
         try {
             const content = fs.readFileSync(resolvedPath);
-            return await EmailService.ingestBuffer(content);
+            return await EmailService.ingestBuffer(content, EmailService.relativizeEmlPath(resolvedPath));
         } catch (e) {
             console.error("[EmailService] Failed to ingest email file:", filePath, e);
             return null;
         }
+    }
+
+    /** Archive path of a maildir file, relative to the maildir root (stored on the row). */
+    static relativizeEmlPath(resolvedPath: string): string {
+        const rel = path.relative(path.resolve(maildirRoot()), resolvedPath).replace(/\\/g, "/");
+        if (!rel || rel.startsWith("..")) {
+            // File lives outside the archive (e.g. scan of an arbitrary
+            // directory) — copy it in so every stored mail keeps its body.
+            return deliverToMaildir(maildirRoot(), "_import", fs.readFileSync(resolvedPath))
+                .slice(path.resolve(maildirRoot()).length + 1).replace(/\\/g, "/");
+        }
+        return rel;
     }
 
     /**
@@ -419,6 +609,11 @@ export function startEmailWatcher(maildirPath: string): void {
         depth: 5,
     });
 
+    // Without this, chokidar's initial add pass re-ingests every archived
+    // file and each dedup check re-reads the whole index — startup pushes
+    // end up queued behind minutes of redundant work.
+    EmailService.warmIndexedEml();
+
     watcher.on("add", async (filePath: string) => {
         const basename = path.basename(filePath);
         if (basename.startsWith(".")) return;
@@ -428,6 +623,8 @@ export function startEmailWatcher(maildirPath: string): void {
         if (!normalized.includes("/new/")) return;
 
         try {
+            const rel = EmailService.relativizeEmlPath(path.resolve(filePath));
+            if (EmailService.isIndexedEml(rel)) return;
             await EmailService.ingestFile(filePath);
         } catch (e) {
             console.error("[EmailWatcher] Failed to process email:", e);

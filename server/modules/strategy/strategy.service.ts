@@ -33,9 +33,10 @@ export class StrategyService {
     }
 
     /**
-     * Run matching and forwarding for a received email.
+     * Run matching and forwarding for a received email. The body is passed in
+     * by the caller (it's in memory at ingest time and not stored in the index).
      */
-    static async matchAndForward(email: { from: string; to: string; subject: string; html?: string; text?: string; time?: number }): Promise<void> {
+    static async matchAndForward(email: { from: string; to: string; subject: string; html?: string; text?: string; time?: number }, body?: { html?: string; text?: string }): Promise<void> {
         const strategy = await StrategyService.matchStrategy(email.from, email.to, email.subject);
         if (!strategy || !strategy.forward_to) return;
 
@@ -44,13 +45,15 @@ export class StrategyService {
         // domain rewriting loses the original sender — surface it in the body
         // block and keep a reply path back to the real author
         const replyTo = bareAddress(email.from);
+        const html = body?.html ?? email.html ?? "";
+        const text = body?.text ?? email.text ?? "";
         await sendEmail({
             from,
             to: strategy.forward_to,
             subject: `Fwd: ${email.subject}`,
-            html: email.html
-                ? forwardPreambleHtml(email.from, email.to) + email.html
-                : forwardPreamblePlain(email.from, email.to) + (email.text || ""),
+            html: html
+                ? forwardPreambleHtml(email.from, email.to) + html
+                : forwardPreamblePlain(email.from, email.to) + text,
             replyTo: replyTo || undefined,
             // loop guard: if this copy ever re-enters the system (remote
             // forwarders, scrapers pushing back over the API), ingest sees

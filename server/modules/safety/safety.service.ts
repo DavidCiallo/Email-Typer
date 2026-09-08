@@ -21,12 +21,25 @@ export class SafetyService {
     }
 
     static async save(entry: Partial<SafetyEntity> & { id?: string }): Promise<SafetyEntity> {
+        const value = String(entry.value || "").trim();
+        const type = String(entry.type || "");
+        if (!value) throw "规则内容不能为空";
+
+        // one rule per type+value — matching is case-insensitive, so is this
+        const rules = await safetyRepository.find({ type } as any);
+        const lower = value.toLowerCase();
+        const dup = rules.find(r => r.id !== entry.id && (r.value || "").trim().toLowerCase() === lower);
+        if (dup) {
+            const label = type === "sensitive_word" ? "敏感词" : type === "blacklist" ? "黑名单" : type === "whitelist" ? "白名单" : "规则";
+            throw `${label}已存在: ${dup.value}`;
+        }
+
         if (entry.id) {
             const { id, ...data } = entry;
-            await safetyRepository.update({ id } as any, data as any);
+            await safetyRepository.update({ id } as any, { ...data, value } as any);
             return (await safetyRepository.findOne({ id } as any))!;
         } else {
-            return await safetyRepository.insert(entry);
+            return await safetyRepository.insert({ ...entry, value } as any);
         }
     }
 
@@ -64,14 +77,27 @@ export class SafetyService {
      */
     private static async reapplyToAllInner(): Promise<number> {
         const rules = await safetyRepository.find({} as any);
+        // Sensitive-word rules need bodies and stored rows no longer carry
+        // them — hydrate once up front (one eml read per mail, off the
+        // request path). Address-only rules skip the file reads entirely.
+        const hasSensitive = rules.some((e) => e.type === "sensitive_word");
+        const bodies = new Map<string, { html: string; text: string }>();
+        if (hasSensitive) {
+            const { EmailService } = await import("../email/email.service");
+            const rows = await emailRepository.find({}, { includeDeleted: true });
+            for (const row of rows) {
+                bodies.set(row.id, EmailService.readBody(row));
+            }
+        }
         const updated = await emailRepository.patchAll((e) => {
+            const body = bodies.get(e.id as string) || { html: "", text: "" };
             const verdict = SafetyService.evaluateWithRules(
                 rules,
                 e.from || "",
                 e.to || "",
                 e.subject || "",
-                e.html || "",
-                e.text || "",
+                body.html,
+                body.text,
             );
             const blocked = verdict.blocked ? 1 : 0;
             if (blocked === (e.blocked || 0)
