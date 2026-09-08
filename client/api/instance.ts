@@ -20,12 +20,18 @@ function buildApiClient(routes: Record<string, RouteDef>, http: HttpClientServic
         // All routes use POST as the method (body-based requests)
         client[name] = async (body: Record<string, any>, callback?: Function) => {
             if (callback) {
-                window.addEventListener(name, (event) => {
-                    const detail = (event as CustomEvent)["detail"];
-                    callback(detail);
+                // Unique event per call: two in-flight requests to the same
+                // route name (e.g. inbox list + its prefetch, or email.list
+                // racing mailbox.list) would otherwise consume each other's
+                // response events and swap payloads.
+                const event = `${name}.${Math.random().toString(36).slice(2)}`;
+                window.addEventListener(event, (ev) => {
+                    callback((ev as CustomEvent)["detail"]);
                 }, { once: true });
+                http.post(event, url, body);
+            } else {
+                http.post(name, url, body);
             }
-            http.post(name, url, body);
         };
     }
 
