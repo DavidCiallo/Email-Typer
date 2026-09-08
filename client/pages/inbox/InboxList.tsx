@@ -1,19 +1,19 @@
 import { formatEmail, blockLabel } from "../../methods/format";
-import { extractCodes } from "../../methods/verifycode";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Archive, Paperclip } from "lucide-react";
+import { Paperclip } from "lucide-react";
 
 const InboxList = (params: {
     emailList: Array<any>,
     newIds: Set<string>,
+    selected: Set<string>,
+    onToggleSelect: (id: string) => void,
+    onSelectAll: () => void,
     onOpen: (email: any) => void,
-    onArchive: (id: string) => void,
 }) => {
-    const { emailList, newIds, onOpen, onArchive } = params;
+    const { emailList, newIds, selected, onToggleSelect, onOpen } = params;
 
     function copyCode(e: React.MouseEvent, code: string) {
         e.stopPropagation();
@@ -24,7 +24,7 @@ const InboxList = (params: {
     return (
         <div id="email-list" className="flex flex-col gap-2">
             {emailList.map((email) => {
-                const codes = extractCodes(email.text, email.html);
+                const codes: string[] = email.codes || [];
                 return (
                     <Card
                         key={email.id}
@@ -32,7 +32,15 @@ const InboxList = (params: {
                         onClick={() => onOpen(email)}
                     >
                         <CardContent className="flex flex-col gap-2 px-3">
-                            <div className="flex flex-row justify-end text-xs text-muted-foreground">
+                            <div className="flex flex-row items-center justify-end text-xs text-muted-foreground">
+                                <input
+                                    type="checkbox"
+                                    className="accent-primary size-4 cursor-pointer"
+                                    title="选择"
+                                    checked={selected.has(email.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={() => onToggleSelect(email.id)}
+                                />
                                 {newIds.has(email.id) && (
                                     <span className="text-primary mr-auto font-medium">新邮件</span>
                                 )}
@@ -69,38 +77,17 @@ const InboxList = (params: {
                                     <Paperclip className="text-muted-foreground size-3.5 shrink-0" aria-label="含附件" />
                                 )}
                             </div>
-                            {codes.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                    {codes.map((code) => (
-                                        <button
-                                            key={code}
-                                            title="点击复制验证码"
-                                            className="bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer rounded px-1.5 py-0.5 font-mono text-xs font-semibold tracking-wider transition-colors"
-                                            onClick={(e) => copyCode(e, code)}
-                                        >
-                                            {code}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="mt-1 flex justify-end gap-2">
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="shrink-0"
-                                    onClick={(e) => { e.stopPropagation(); onOpen(email); }}
-                                >
-                                    查看
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="shrink-0 text-destructive hover:text-destructive"
-                                    onClick={(e) => { e.stopPropagation(); onArchive(email.id); }}
-                                >
-                                    <Archive className="size-3.5" />
-                                    归档
-                                </Button>
+                            <div className="flex h-5 flex-wrap gap-1">
+                                {codes.map((code) => (
+                                    <button
+                                        key={code}
+                                        title="点击复制验证码"
+                                        className="bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer rounded px-1.5 py-0.5 font-mono text-xs font-semibold tracking-wider transition-colors"
+                                        onClick={(e) => copyCode(e, code)}
+                                    >
+                                        {code}
+                                    </button>
+                                ))}
                             </div>
                         </CardContent>
                     </Card>

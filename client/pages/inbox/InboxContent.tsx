@@ -70,20 +70,26 @@ const InboxContentModal = ({
     isOpen,
     onOpenChange,
 }: props) => {
-    const isHtml = !!(email.html && String(email.html).trim());
-    const bodyHtml = isHtml ? email.html : linkifyText(email.text || "");
+    // Bodies live in the server-side eml archive — hydrate them via detail
+    // on open; the list row carries metadata only.
+    const [body, setBody] = useState<{ html: string; text: string } | null>(null);
     const [attachments, setAttachments] = useState<any[] | null>(null);
 
     // The list row only carries counts — fetch full metadata (attachment list) on open
     useEffect(() => {
         if (!isOpen || !email?.id) return;
         setAttachments(null);
+        setBody(null);
         EmailRouter.detail({ id: email.id }, (data: any) => {
             const result = data?.data || data;
             const detail = result?.data || result;
             setAttachments(Array.isArray(detail?.attachments) ? detail.attachments : []);
+            setBody({ html: detail?.html || "", text: detail?.text || "" });
         });
     }, [isOpen, email?.id]);
+
+    const isHtml = !!(body?.html && String(body.html).trim());
+    const bodyHtml = isHtml ? body!.html : linkifyText(body?.text || "");
 
     const AttachmentsSection = () => {
         if (attachments === null) return null;
@@ -170,7 +176,7 @@ const InboxContentModal = ({
         )
     }
 
-    const codes = extractCodes(email.text, email.html);
+    const codes = extractCodes(body?.text, body?.html);
     const ModalFooterContent = () => {
         return (<>
             {

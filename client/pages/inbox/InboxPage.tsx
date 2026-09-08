@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { EmailRouter } from "../../api/instance";
+import { EmailRouter, MailboxRouter } from "../../api/instance";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Pagination } from "../../components/ui/pagination";
@@ -12,8 +12,11 @@ import {
 } from "../../components/ui/select";
 import { Archive, RotateCw, Search, ShieldAlert } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { inTauthSession } from "../../methods/tauth";
 import EmailContentModal from "./InboxContent";
 import ArchivedDialog from "./ArchivedDialog";
+import InterceptedDialog from "./InterceptedDialog";
+import { SearchableSelect, type SearchOption } from "./SearchableSelect";
 import { toast } from "../../methods/notify";
 import InboxTable from "./InboxTable";
 import InboxList from "./InboxList";
@@ -23,28 +26,34 @@ const PAGE_SIZE = 10;
 const EmailPage = () => {
     const [allEmailList, setAllEmailList] = useState<any[]>([]);
     const [total, setTotal] = useState<number>(0);
-    const [accounts, setAccounts] = useState<string[]>([]);
     const [page, setPage] = useState(1);
 
     const [searchInput, setSearchInput] = useState("");
     const [search, setSearch] = useState("");
+    // "all" | "mailbox:<address>" | "acct:<localpart>"
     const [accountFilter, setAccountFilter] = useState("all");
-    const [sourceFilter, setSourceFilter] = useState("all");
-    const [blockedOnly, setBlockedOnly] = useState(false);
+    // "all" | "code" | "links" | "attachments"
+    const [contentFilter, setContentFilter] = useState("all");
+    const [mailboxes, setMailboxes] = useState<any[]>([]);
+
+    // row selection (checkboxes) + bulk actions
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [archivingSelection, setArchivingSelection] = useState(false);
 
     const [focusEmail, setFocusEmail] = useState<any | null>(null);
     const [isEmailContentOpen, setEmailContentOpen] = useState(false);
 
-    // Archived emails live in a dialog, opened from a small toolbar button
+    // Archived / intercepted emails live in dialogs, opened from toolbar buttons
     const [isArchivedOpen, setArchivedOpen] = useState(false);
+    const [isInterceptedOpen, setInterceptedOpen] = useState(false);
 
     const [refreshing, setRefreshing] = useState(false);
     const [newIds, setNewIds] = useState<Set<string>>(new Set());
     const maxTimeRef = useRef<number | null>(null);
 
     // Keep latest values accessible inside interval / ws handlers
-    const stateRef = useRef({ search, accountFilter, sourceFilter, page, blockedOnly });
-    stateRef.current = { search, accountFilter, sourceFilter, page, blockedOnly };
+    const stateRef = useRef({ search, accountFilter, contentFilter, page });
+    stateRef.current = { search, accountFilter, contentFilter, page };
 
     // Prefetched pages keyed by "<filters>|<page>" — paging renders instantly
     // from the cache while the next page is fetched in the background.
@@ -54,20 +63,23 @@ const EmailPage = () => {
 
     function listParams(page: number) {
         const s = stateRef.current;
+        const acct = s.accountFilter;
         return {
             offset: (page - 1) * PAGE_SIZE,
             limit: PAGE_SIZE,
-            account_id: s.accountFilter !== "all" ? s.accountFilter : undefined,
+            to: acct.startsWith("to:") ? acct.slice(3) : undefined,
             q: s.search || undefined,
-            blocked: s.blockedOnly,
-            source: s.sourceFilter !== "all" ? s.sourceFilter : undefined,
+            blocked: false,
+            has_code: s.contentFilter === "code" || undefined,
+            has_links: s.contentFilter === "links" || undefined,
+            has_attachments: s.contentFilter === "attachments" || undefined,
         };
     }
 
     function applyEmails(result: any) {
         const list = result.list || [];
-        setTotal(result.total || 0);
-        if (result.accounts) setAccounts(result.accounts);
+        // guard against stale/raced responses without a usable total
+        if (typeof result.total === "number" && result.total >= 0) setTotal(result.total);
 
         // Highlight rows newer than anything seen before
         const maxPrev = maxTimeRef.current;
@@ -94,20 +106,9 @@ const EmailPage = () => {
         }
     }
 
-    /** Fetch page+1 into the cache so clicking "next" needs no network round trip. */
-    function prefetchPage(page: number) {
-        const key = `${filterKey()}|${page + 1}`;
-        if (pageCacheRef.current.has(key) || inflightRef.current.has(key)) return;
-        inflightRef.current.add(key);
-        EmailRouter.list(listParams(page + 1), (data: any) => {
-            inflightRef.current.delete(key);
-            cacheResult(key, data.data || data);
-        });
-    }
-
     function filterKey() {
         const s = stateRef.current;
-        return `${s.search}|${s.accountFilter}|${s.sourceFilter}|${s.blockedOnly}`;
+        return `${s.search}|${s.accountFilter}|${s.contentFilter}`;
     }
 
     function queryEmails(overrides?: Partial<{ page: number; silent: boolean; cache: boolean }>) {
@@ -116,7 +117,6 @@ const EmailPage = () => {
         if (overrides?.cache !== false && pageCacheRef.current.has(key)) {
             applyEmails(pageCacheRef.current.get(key));
             setRefreshing(false);
-            prefetchPage(page);
             return;
         }
         if (inflightRef.current.has(key)) return;
@@ -128,12 +128,7 @@ const EmailPage = () => {
             cacheResult(key, result);
             applyEmails(result);
             setRefreshing(false);
-            prefetchPage(page);
         });
-    }
-
-    function openArchived() {
-        setArchivedOpen(true);
     }
 
     // Refetch whenever page / search / filters change (also covers initial load).
@@ -145,7 +140,7 @@ const EmailPage = () => {
             filtersKeyRef.current = fk;
         }
         queryEmails({ page });
-    }, [page, search, accountFilter, sourceFilter, blockedOnly]);
+    }, [page, search, accountFilter, contentFilter]);
 
     // Debounce the search input
     useEffect(() => {
@@ -170,6 +165,20 @@ const EmailPage = () => {
         return () => window.removeEventListener("email:new", onNewEmail);
     }, []);
 
+    // Mailbox / address options for the account filter (admin sessions only —
+    // tauth sessions are already scoped to a single address). Declared
+    // mailboxes come first, then addresses derived from received traffic.
+    useEffect(() => {
+        if (inTauthSession()) return;
+        MailboxRouter.addresses({}, (data: any) => {
+            const result = data?.data || data;
+            setMailboxes([
+                ...(result?.declared || []).map((b: any) => ({ address: b.address, name: b.name, note: b.note })),
+                ...(result?.derived || []).map((d: any) => ({ address: d.address, name: "", note: `${d.count} 封`, derived: true })),
+            ]);
+        });
+    }, []);
+
     function openEmail(email: any) {
         setFocusEmail(email);
         setEmailContentOpen(true);
@@ -180,16 +189,63 @@ const EmailPage = () => {
         });
     }
 
-    function archiveEmail(id: string) {
-        EmailRouter.delete({ id }, () => {
-            toast({
-                title: "已归档",
-                color: "primary",
-                action: { label: "撤销", onClick: () => EmailRouter.restore({ id }, () => queryEmails({ cache: false })) },
-            });
-            queryEmails({ cache: false });
+    // ---------- selection ----------
+
+    function toggleSelect(id: string) {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
         });
     }
+
+    function toggleSelectAll() {
+        setSelected((prev) => {
+            const allSelected = allEmailList.length > 0 && allEmailList.every((e) => prev.has(e.id));
+            if (allSelected) {
+                const next = new Set(prev);
+                allEmailList.forEach((e) => next.delete(e.id));
+                return next;
+            }
+            return new Set([...prev, ...allEmailList.map((e) => e.id)]);
+        });
+    }
+
+    function clearSelection() {
+        setSelected(new Set());
+    }
+
+    function archiveSelected() {
+        const ids = [...selected];
+        if (ids.length === 0 || archivingSelection) return;
+        setArchivingSelection(true);
+        let done = 0;
+        ids.forEach((id) => {
+            EmailRouter.delete({ id }, () => {
+                done++;
+                if (done === ids.length) {
+                    setArchivingSelection(false);
+                    clearSelection();
+                    toast({
+                        title: `已归档 ${ids.length} 封`,
+                        color: "primary",
+                        action: {
+                            label: "撤销",
+                            onClick: () => {
+                                ids.forEach((rid) => EmailRouter.restore({ rid }, () => { }));
+                                toast({ title: "已全部恢复到收件箱", color: "success" });
+                                setTimeout(() => queryEmails({ cache: false }), 300);
+                            },
+                        },
+                    });
+                    queryEmails({ cache: false });
+                }
+            });
+        });
+    }
+
+    // ---------- end selection ----------
 
     function restoreEmail(id: string) {
         EmailRouter.restore({ id }, () => {
@@ -198,8 +254,15 @@ const EmailPage = () => {
         });
     }
 
+    // Account filter options — every entry filters by recipient address
+    // (`to` contains), declared mailboxes first, then derived addresses.
+    const accountOptions: SearchOption[] = mailboxes.map((b) => {
+        const hint = b.derived ? (b.note || undefined) : ([b.name, b.note].filter(Boolean).join(" · ") || undefined);
+        return { value: `to:${b.address}`, label: b.address, hint, keywords: `${b.name || ""} ${b.note || ""}` };
+    });
+
     return (
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+        <div className="mx-auto flex w-full flex-col gap-4">
             <div className="flex flex-wrap items-center gap-2">
                 {/* Search */}
                 <div className="relative min-w-48 flex-1">
@@ -212,47 +275,41 @@ const EmailPage = () => {
                     />
                 </div>
 
-                {/* Account filter */}
-                <Select
-                    value={accountFilter}
-                    onValueChange={(v) => { setAccountFilter(v); setPage(1); }}
-                >
-                    <SelectTrigger className="w-44">
-                        <SelectValue placeholder="全部账号" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">全部账号</SelectItem>
-                        {accounts.map((a) => (
-                            <SelectItem key={a} value={a}>{a}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                {/* Mailbox / account filter (admin only — tauth is scoped to one address) */}
+                {!inTauthSession() && (
+                    <SearchableSelect
+                        className="min-w-44 flex-1"
+                        value={accountFilter}
+                        options={accountOptions}
+                        allLabel="全部账号"
+                        searchPlaceholder="搜索邮箱 / 地址 / 备注…"
+                        onChange={(v) => { setAccountFilter(v); setPage(1); clearSelection(); }}
+                    />
+                )}
 
-                {/* Source filter */}
+                {/* Content filter */}
                 <Select
-                    value={sourceFilter}
-                    onValueChange={(v) => { setSourceFilter(v); setPage(1); }}
+                    value={contentFilter}
+                    onValueChange={(v) => { setContentFilter(v); setPage(1); clearSelection(); }}
                 >
                     <SelectTrigger className="w-36">
-                        <SelectValue placeholder="全部来源" />
+                        <SelectValue placeholder="全部内容" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">全部来源</SelectItem>
-                        <SelectItem value="maildir">收信</SelectItem>
-                        <SelectItem value="api">API</SelectItem>
-                        <SelectItem value="imap">IMAP</SelectItem>
-                        <SelectItem value="receive">接口</SelectItem>
+                        <SelectItem value="all">全部内容</SelectItem>
+                        <SelectItem value="code">携带验证码</SelectItem>
+                        <SelectItem value="links">携带链接</SelectItem>
+                        <SelectItem value="attachments">携带附件</SelectItem>
                     </SelectContent>
                 </Select>
 
                 <div className="ml-auto flex items-center gap-2">
                     <Button
-                        variant={blockedOnly ? "default" : "ghost"}
+                        variant="ghost"
                         size="icon"
-                        aria-label="只看已拦截"
-                        aria-pressed={blockedOnly}
-                        title="只看已拦截"
-                        onClick={() => { setBlockedOnly(!blockedOnly); setPage(1); }}
+                        aria-label="已拦截"
+                        title="已拦截"
+                        onClick={() => setInterceptedOpen(true)}
                     >
                         <ShieldAlert className="size-4" />
                     </Button>
@@ -261,7 +318,7 @@ const EmailPage = () => {
                         size="icon"
                         aria-label="已归档"
                         title="已归档"
-                        onClick={openArchived}
+                        onClick={() => setArchivedOpen(true)}
                     >
                         <Archive className="size-4" />
                     </Button>
@@ -277,21 +334,43 @@ const EmailPage = () => {
                 </div>
             </div>
 
+            {/* Selection actions — mobile only; desktop hosts them in the table header */}
+            {selected.size > 0 && (
+                <div className="bg-muted/60 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 md:hidden">
+                    <span className="text-sm font-medium">已选 {selected.size} 项</span>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={archivingSelection}
+                        onClick={archiveSelected}
+                    >
+                        <Archive className="size-3.5" />
+                        归档选中
+                    </Button>
+                </div>
+            )}
+
             <div className={cn("transition-opacity", refreshing && "opacity-60")}>
                 <div className="hidden w-full md:block">
                     <InboxTable
                         emailList={allEmailList}
                         newIds={newIds}
+                        selected={selected}
+                        onToggleSelect={toggleSelect}
+                        onSelectAll={toggleSelectAll}
+                        onArchiveSelected={archiveSelected}
+                        archivingSelection={archivingSelection}
                         onOpen={openEmail}
-                        onArchive={archiveEmail}
                     />
                 </div>
                 <div className="block w-full md:hidden">
                     <InboxList
                         emailList={allEmailList}
                         newIds={newIds}
+                        selected={selected}
+                        onToggleSelect={toggleSelect}
+                        onSelectAll={toggleSelectAll}
                         onOpen={openEmail}
-                        onArchive={archiveEmail}
                     />
                 </div>
             </div>
@@ -301,7 +380,7 @@ const EmailPage = () => {
                 <Pagination
                     page={page}
                     total={Math.ceil(total / PAGE_SIZE)}
-                    onChange={(newPage: number) => setPage(newPage)}
+                    onChange={(newPage: number) => { setPage(newPage); clearSelection(); }}
                 />
             </div>
 
@@ -312,6 +391,11 @@ const EmailPage = () => {
                 isOpen={isArchivedOpen}
                 onOpenChange={setArchivedOpen}
                 onRestore={restoreEmail}
+                onOpen={openEmail}
+            />
+            <InterceptedDialog
+                isOpen={isInterceptedOpen}
+                onOpenChange={setInterceptedOpen}
                 onOpen={openEmail}
             />
         </div>
