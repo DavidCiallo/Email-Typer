@@ -10,10 +10,10 @@ RUN bun run build
 
 # ---- server (pure-Go, no CGo) ----
 FROM golang:1.23-alpine AS api
-WORKDIR /src/server-go
-COPY server-go/go.mod server-go/go.sum ./
+WORKDIR /src/server
+COPY server/go.mod server/go.sum ./
 RUN go mod download
-COPY server-go/ ./
+COPY server/ ./
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/cfrs-email .
 
 # ---- runtime ----

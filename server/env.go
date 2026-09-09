@@ -56,7 +56,7 @@ var (
 
 func initPaths() {
 	if wd, err := os.Getwd(); err == nil {
-		// The binary runs from server-go/ in dev, or from the repo root in
+		// The binary runs from server/ in dev, or from the repo root in
 		// Docker — detect by looking for repo-root markers in the CWD itself.
 		if dirExists(filepath.Join(wd, "dist")) || dirExists(filepath.Join(wd, "data")) || fileExists(filepath.Join(wd, ".env")) {
 			repoRoot = wd

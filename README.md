@@ -8,7 +8,7 @@
 ## 技术栈
 
 - 前端：React + HeroUI
-- 后端：Go + SQLite（`server-go/`）
+- 后端：Go + SQLite（`server/`）
 - 前端构建：Bun + rsbuild
 
 ## 快速开始
@@ -56,7 +56,7 @@ npm run dev
 ```
 .
 ├── client/      # 前端代码（React + HeroUI + TypeScript）
-├── server-go/   # 后端代码（Go + SQLite）
+├── server/      # 后端代码（Go + SQLite）
 ├── shared/      # 前后端共享的类型与工具（TypeScript）
 ├── README.md
 ```
@@ -65,7 +65,7 @@ npm run dev
 
 ```bash
 npm run build          # 前端 → dist/
-cd server-go && go build -o cfrs-email .   # 后端单二进制
+cd server && go build -o cfrs-email .   # 后端单二进制
 ```
 
 Go 二进制同时托管 `dist/` 静态资源与 `/api`，单进程单端口即可部署（需与 `dist/`、`data/`、`eml/` 同目录运行，或用 `DATA_DIR` / `DIST_DIR` 指定）。Docker 部署直接 `docker compose up -d --build`（多阶段构建：bun 打包前端 + Go 编译后端）。

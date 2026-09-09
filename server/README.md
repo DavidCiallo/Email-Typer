@@ -1,6 +1,6 @@
 # CFRS-Email Go 服务端
 
-Bun/TypeScript 服务端（`server/`）的 Go 移植版，目标是把常驻内存从 225–355 MB（Bun）
+Bun/TypeScript 服务端的 Go 移植版，目标是把常驻内存从 225–355 MB（Bun）
 降到 ~20 MB，适配小内存 VPS。
 
 ## 与 TS 版的兼容性
@@ -21,9 +21,9 @@ Bun/TypeScript 服务端（`server/`）的 Go 移植版，目标是把常驻内�
 ## 构建与运行
 
 ```
-cd server-go
-go build -o cfrsgo.exe .
-./cfrsgo.exe          # 读取仓库根目录 .env，默认端口 SERVER_PORT=3300
+cd server
+go build -o cfrs-email .
+./cfrs-email          # 读取仓库根目录 .env，默认端口 SERVER_PORT=3300
 ```
 
 环境变量与 TS 版共用（SECRET、SERVER_PORT、EMAIL_RECEIVE_API_KEY、ADMIN_* 等），
