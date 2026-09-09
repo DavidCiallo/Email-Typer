@@ -105,7 +105,8 @@ const SenderPage = () => {
         MailboxRouter.list({}, (res: any) => {
             const result = res?.data || res;
             const list = result?.list || [];
-            setSenders(list.map((b: any) => b.address).sort());
+            // server already returns newest-created first
+            setSenders(list.map((b: any) => b.address));
         });
     }, [])
 

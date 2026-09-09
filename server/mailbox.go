@@ -60,6 +60,8 @@ func mailboxLoadAll(mailboxType string) []*MailboxRow {
 		query += ` AND type = ?`
 		args = append(args, mailboxType)
 	}
+	// newest-created first; rowid breaks ties within the same millisecond
+	query += ` ORDER BY create_time DESC, rowid DESC`
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil
