@@ -1,5 +1,5 @@
-cfrsgo
-cfrsgo.exe
+cfrs-email
+cfrs-email.exe
 *.db
 *.db-wal
 *.db-shm
