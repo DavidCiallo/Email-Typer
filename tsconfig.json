@@ -26,5 +26,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["shared", "client", "server"]
+  "include": ["shared", "client"]
 }

@@ -3,13 +3,13 @@
 ## 项目介绍
 本项目旨在使用 Postfix 实现一个自定义邮箱集成服务。支持邮件接收，多邮箱管理，转发策略设置，以及实现发信服务。
 
-本项目为全栈应用，前端基于 [React](https://react.dev/) [HeroUI](https://heroicons.com/) ，后端基于 [Express](https://expressjs.com/)，使用[TypeScript](https://www.typescriptlang.org/) 进行开发，推荐使用 [Bun](https://bun.sh/)。
+本项目为全栈应用，前端基于 [React](https://react.dev/) [HeroUI](https://heroicons.com/) ，后端基于 [Go](https://go.dev/)（SQLite 存储，纯 Go 无 CGo），前端使用 [TypeScript](https://www.typescriptlang.org/)，构建工具推荐 [Bun](https://bun.sh/)。
 
 ## 技术栈
 
 - 前端：React + HeroUI
-- 后端：Express
-- 运行环境：Bun (nodejs)
+- 后端：Go + SQLite（`server-go/`）
+- 前端构建：Bun + rsbuild
 
 ## 快速开始
 
@@ -27,52 +27,52 @@ npm install -g bun
 bun install
 ```
 
+后端需要 Go 1.23+（[golang.org](https://go.dev/dl/)），依赖在首次构建时自动拉取。
+
 ### 编辑环境变量
 
 新建.env文件，内容可参考.env.example；或执行
 ```bash
 cp .env.example .env
 ```
-但开发环境与部署环境不同，部署仅需单个端口，HTTP只需指定唯一变量SERVER_HTTP_PORT即可
+SECRET 用于登录 token 与凭据加密，更换后旧 token / IMAP 凭据失效。
 
 ### 启动开发环境
 
-####
-```bash
-npm run all
-```
+#### 前端 + 后端
 
-#### 单独启用前端
-
-```bash
-npm run dev
-```
-
-#### 单独启用后端
-
+终端 1（后端，默认 3300 端口）：
 ```bash
 npm run serve
 ```
 
-## 目录结构
+终端 2（前端 dev server）：
+```bash
+npm run dev
+```
+
+#### 目录结构
 
 ```
 .
 ├── client/      # 前端代码（React + HeroUI + TypeScript）
-├── server/      # 后端代码（Express + TypeScript）
-├── shared/      # 共享代码（TypeScript）
+├── server-go/   # 后端代码（Go + SQLite）
+├── shared/      # 前后端共享的类型与工具（TypeScript）
 ├── README.md
 ```
 
 ## 构建与部署
+
 ```bash
-npm run build
+npm run build          # 前端 → dist/
+cd server-go && go build -o cfrs-email .   # 后端单二进制
 ```
-将在 dist 目录下生成前端静态打包文件，可部署到任何静态文件服务器中；同时生成bundle.mjs文件，可部署到任何支持Node.js的服务器中。
+
+Go 二进制同时托管 `dist/` 静态资源与 `/api`，单进程单端口即可部署（需与 `dist/`、`data/`、`eml/` 同目录运行，或用 `DATA_DIR` / `DIST_DIR` 指定）。Docker 部署直接 `docker compose up -d --build`（多阶段构建：bun 打包前端 + Go 编译后端）。
 
 ## 数据与备份
 
-邮件索引（`data/email.jsonl`）只存元数据；**正文保存在 `eml/` 归档目录**（邮件详情按需从对应 eml 文件读取），附件在 `data/attachments/`。备份 / 迁移时请把 `data/` 与 `eml/` 一起带走；「导出数据」生成的 JSON 不含正文，导入后需配合原有 `eml/` 目录才能查看正文。
+邮件索引存放在 SQLite（`data/cfrs.db`，首次启动自动从旧版 `data/*.jsonl` 导入，JSONL 保留作备份）；**正文保存在 `eml/` 归档目录**（邮件详情按需从对应 eml 文件读取），附件在 `data/attachments/`。备份 / 迁移时请把 `data/`（含 `cfrs.db*`）与 `eml/` 一起带走；「导出数据」生成的 JSON 不含正文，导入后需配合原有 `eml/` 目录才能查看正文。
 
 ## Push API（外部邮件投递）
 
