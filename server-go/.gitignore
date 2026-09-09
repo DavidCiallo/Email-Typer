@@ -1,0 +1,5 @@
+cfrsgo
+cfrsgo.exe
+*.db
+*.db-wal
+*.db-shm
