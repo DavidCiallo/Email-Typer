@@ -175,7 +175,7 @@ func emailList(c *Ctx) (any, error) {
 	var total int64
 	db.QueryRow(`SELECT COUNT(*) FROM emails`+where, args...).Scan(&total)
 
-	query := `SELECT ` + emailCols + ` FROM emails` + where + ` ORDER BY rowid DESC`
+	query := `SELECT ` + emailCols + ` FROM emails` + where + ` ORDER BY time DESC, rowid DESC`
 	if req.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d OFFSET %d", *req.Limit, req.Offset)
 	} else if req.Offset > 0 {
