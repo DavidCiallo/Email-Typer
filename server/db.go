@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS emails (
 CREATE INDEX IF NOT EXISTS idx_emails_msgid ON emails(message_id);
 CREATE INDEX IF NOT EXISTS idx_emails_fp ON emails(from_addr, to_addr, subject, time);
 CREATE INDEX IF NOT EXISTS idx_emails_to ON emails(to_addr);
+CREATE INDEX IF NOT EXISTS idx_emails_time ON emails(time);
 CREATE INDEX IF NOT EXISTS idx_emails_deleted ON emails(delete_time);
 
 CREATE TABLE IF NOT EXISTS strategies (
