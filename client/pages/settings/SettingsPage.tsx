@@ -15,7 +15,7 @@ const FIELD_LABELS: Record<string, string> = {
     resend_api_key: "Resend API Key（默认）",
     resend_api_keys: "Resend API Keys（按域名）",
     allowed_domains: "允许注册的域名",
-    allowed_from_domains: "允许发件的域名",
+    allowed_from_domains: "可管理域名（收信 / 发件）",
     client_url: "客户端地址",
     email_receive_api_key: "推送/收信 API Key",
     push_rate_limit_per_min: "推送频率上限（次/分钟，0 = 不限）",

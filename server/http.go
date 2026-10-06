@@ -87,7 +87,7 @@ func serveAPI(w http.ResponseWriter, r *http.Request) bool {
 			body = map[string]any{}
 		}
 	}
-	// query params first, body overrides (same merge order as the TS mount)
+	// query params first, body overrides
 	for k, vs := range r.URL.Query() {
 		if _, exists := body[k]; !exists && len(vs) > 0 {
 			body[k] = vs[0]

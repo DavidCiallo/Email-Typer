@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-// Port of server/modules/settings — DB rows override env defaults; an empty
-// save clears the row so the env value shines through again.
+// DB rows override env defaults; saving an empty value clears the row so the
+// env value applies again.
 
 var settingKeys = map[string]string{
 	"allow_register":          "ALLOW_REGISTER",

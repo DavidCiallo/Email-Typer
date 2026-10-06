@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-// nanoid alphabet + length parity with the nanoid package used by the Bun server.
+// Alphabet and length must match the nanoid package the Bun server used, so
+// ids stay interchangeable.
 const nanoAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict"
 
 var nanoRandState atomic.Uint64

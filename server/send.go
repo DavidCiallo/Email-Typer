@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// ---------- Resend sending (port of sendEmail) ----------
+// ---------- Resend sending ----------
 
 const resendAPIURL = "https://api.resend.com/emails"
 
@@ -160,7 +160,7 @@ func sendLogSetStatus(id, status, errMsg string) bool {
 	return n > 0
 }
 
-// ---------- strategy matching + forwarding (port of StrategyService) ----------
+// ---------- strategy matching + forwarding ----------
 
 var bareAddrRe = regexp.MustCompile(`[\w.+-]+@[\w.-]+`)
 
@@ -254,9 +254,6 @@ func resolveForwardFrom(originalFrom, forwardTo string) string {
 		fromDomain = strings.ToLower(rawEmail[at+1:])
 	}
 	allowedRaw := settingGet("allowed_from_domains")
-	if allowedRaw == "" {
-		allowedRaw = settingGet("allowed_domains")
-	}
 	var allowedFrom []string
 	for _, d := range strings.Split(allowedRaw, ",") {
 		d = strings.ToLower(strings.TrimSpace(d))

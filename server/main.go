@@ -6,9 +6,7 @@ import (
 	"net/http"
 )
 
-// CFRS-Email Go server — drop-in replacement for the Bun server:
-// same routes, same request/response envelope, same token crypto,
-// SQLite storage instead of JSONL, bodies hydrated from the eml archive.
+// SQLite instead of JSONL; bodies hydrate from the eml archive.
 
 func registerRoutes() {
 	apiHandlers["/api/auth/login"] = authLogin

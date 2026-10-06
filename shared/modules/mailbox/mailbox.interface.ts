@@ -126,7 +126,7 @@ export class MailboxDeleteResponse implements BaseResponse<null> {
     }
 }
 
-// Addresses: declared mailboxes ∪ addresses derived from received traffic
+// Declared mailboxes ∪ addresses derived from received traffic
 export class MailboxAddressesRequest implements BaseRequest {
     public auth?: string;
 
@@ -268,7 +268,7 @@ export class MailboxProvidersResponse implements BaseResponse<{ presets: Provide
     }
 }
 
-// ---- temporary mailbox access grants (tauth) ----
+// ---- temporary access grants (tauth) ----
 
 export class MailboxGrantGetRequest implements BaseRequest {
     public auth?: string;
@@ -299,7 +299,7 @@ export class MailboxGrantGetResponse implements BaseResponse<{ grant: MailboxGra
 export class MailboxGrantSaveRequest implements BaseRequest {
     public auth?: string;
     public mailbox_id: string;
-    /** validity in days, counted from creation moment */
+    /** validity in days */
     public days: number;
     public note?: string;
 

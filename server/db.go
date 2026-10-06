@@ -9,8 +9,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// One connection: SQLite writes are serialized app-side anyway (same as the
-// JSONL write lock), it dodges SQLITE_BUSY entirely and keeps RSS low.
+// One connection: writes are serialized app-side anyway, so this avoids
+// SQLITE_BUSY entirely and keeps RSS low.
 var db *sql.DB
 
 const schema = `
@@ -104,8 +104,8 @@ func tableEmpty(table string) bool {
 	return n == 0
 }
 
-// migrateJSONL imports the Bun server's *.jsonl stores once. The files are
-// left in place as a backup; a meta marker keeps this idempotent.
+// migrateJSONL imports the legacy *.jsonl stores once. The files are left in
+// place as a backup; a meta marker keeps this idempotent.
 func migrateJSONL() error {
 	if metaGet("migrated") == "1" {
 		return nil
@@ -169,8 +169,8 @@ func migrateJSONL() error {
 		}
 		fmt.Printf("[Migrate] %s: %d rows\n", j.table, count)
 	}
-	// index files that exist but predate the eml column keep working through
-	// readBody's inline fallback — no rescan needed at boot.
+	// Rows predating the eml column still work through readBody's inline
+	// fallback, so no rescan at boot.
 	metaSet("migrated", "1")
 	return nil
 }

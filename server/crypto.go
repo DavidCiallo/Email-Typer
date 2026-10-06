@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// Exact replication of server/methods/crypto.ts so tokens, passwords and
-// credentials created by the Bun server keep working:
+// Scheme must stay compatible with tokens, passwords and credentials already
+// stored by the Bun server:
 //   key  = SHA256(SECRET)
 //   iv   = SHA256("cfrs-iv-" + SECRET)[:16]
 //   enc  = AES-256-CBC( nonceHexSuffix + reverse(plaintext) ) -> hex
@@ -109,7 +109,7 @@ func hashGenerate(data string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// timingSafeEq compares two strings after hashing — same shape-dodge as the TS version.
+// timingSafeEq compares two strings after hashing.
 func timingSafeEq(a, b string) bool {
 	ha := sha256.Sum256([]byte(a))
 	hb := sha256.Sum256([]byte(b))

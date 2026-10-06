@@ -36,8 +36,6 @@ func base64DecodeStripped(s string) ([]byte, bool) {
 
 func urlQueryEscape(s string) string { return url.QueryEscape(s) }
 
-// Port of server/modules/email/email.controller.ts
-
 type tauthSession struct {
 	grant     *GrantRow
 	address   string
@@ -345,7 +343,6 @@ func emailSend(c *Ctx) (any, error) {
 	for _, a := range attachments {
 		attMetas = append(attMetas, map[string]any{
 			"filename": a.filename, "content": a.content,
-			// Math.round(content.length * 3 / 4) parity
 			"size": (len(a.content)*3 + 2) / 4,
 		})
 	}

@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Port of EmailService — index/body split: rows keep metadata only, bodies
-// hydrate from the eml archive. Ingests serialize behind a mutex.
+// Rows keep metadata only; bodies hydrate from the eml archive. Ingests
+// serialize behind a mutex.
 
 var ingestMu sync.Mutex
 
@@ -270,8 +270,8 @@ func emailShouldForward(stored *EmailRow) bool {
 	return true
 }
 
-// readBody hydrates the body from the archived eml (inline fallback for
-// pre-split rows or missing archives).
+// readBody hydrates the body from the archived eml, falling back to the inline
+// columns when there is no archive.
 func readBody(e *EmailRow) [2]string {
 	if e.Eml == "" {
 		return [2]string{e.HTML, e.Text}
@@ -405,8 +405,7 @@ func emailPurge(id string) bool {
 	return n > 0
 }
 
-// watcher — periodic scan replaces chokidar (same semantics: only files under
-// a */new/ directory, skipping paths already indexed).
+// watcher — only files under a */new/ directory, skipping paths already indexed.
 func startEmailWatcher(maildirPath string) {
 	if _, err := os.Stat(maildirPath); err != nil {
 		log.Printf("[EmailWatcher] Maildir path not found: %s", maildirPath)

@@ -499,7 +499,7 @@ func walkPart(buf []byte, headers map[string]string, depth int, out *walkOut) {
 
 var emailAddrRe = regexp.MustCompile(`[\w.-]+@[\w.-]+`)
 
-// parseRawEmail mirrors server/lib/mime.ts parseRawEmail.
+// parseRawEmail mirrors shared parseRawEmail.
 func parseRawEmail(raw []byte) *ParsedEmail {
 	if len(raw) == 0 {
 		return nil

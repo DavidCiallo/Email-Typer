@@ -8,8 +8,8 @@ import (
 	"sync"
 )
 
-// Port of server/modules/safety — evaluate at ingest, re-evaluate the whole
-// store in a single-flight background pass when rules change.
+// Rules are evaluated at ingest and, when they change, re-evaluated over the
+// whole store in a single-flight background pass.
 
 func matchPattern(value, pattern string) bool {
 	if pattern == "" {
@@ -141,7 +141,7 @@ var (
 	reapplyAgain   bool
 )
 
-// safetyScheduleReapply queues one retroactive pass (coalesced, off-request).
+// safetyScheduleReapply queues a retroactive pass (coalesced, off-request).
 func safetyScheduleReapply() {
 	reapplyMu.Lock()
 	if reapplyRunning {
