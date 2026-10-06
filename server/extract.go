@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Port of shared/lib/extract.ts — verification-code + link flags recorded at ingest.
+// Mirrors shared/lib/extract.ts — verification-code + link flags recorded at ingest.
 
 var (
 	codeRe     = regexp.MustCompile(`\d{6}`)

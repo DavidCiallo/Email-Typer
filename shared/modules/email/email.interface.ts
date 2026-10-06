@@ -140,14 +140,14 @@ export class EmailSendResponse implements BaseResponse<{ status: string }> {
     }
 }
 
-// Send history — outbound tasks (resend-sent immediately, or pending for an
-// external channel that reports back via send-log/update)
+// Send history (outbound + pending for an external channel that reports back
+// via send-log/update)
 export class SendLogListRequest implements BaseRequest {
     public auth?: string;
     public status?: string;
     public limit?: number;
     public offset?: number;
-    /** include attachment base64 payloads (for external channel scripts) */
+    /** include attachment base64 payloads (externally delivered sends) */
     public include_content?: boolean;
 
     constructor(origin: Partial<SendLogListRequest>) {
@@ -345,14 +345,11 @@ export class EmailPushRequest implements BaseRequest {
     public text?: string;
     public attachments?: EmailPushAttachment[];
     public message_id?: string;
-    // Mandatory — the mail's own time (ms since epoch). Pushed mail is stored
-    // with exactly this time (never the ingest moment); on the raw passthrough
-    // path it replaces the Date header in the archived file so re-scans agree.
-    // Can also arrive as a `time` query param for message/rfc822 bodies.
+    // The mail's own time, ms since epoch — stored time is exactly this, never
+    // the ingest moment. Also accepted as a `time` query param for
+    // message/rfc822 bodies.
     public time: number;
-    // Raw MIME passthrough — for bridge scripts that already hold a full
-    // RFC 822 message. Either a complete message/rfc822 request body
-    // (Content-Type: message/rfc822) or one of these fields.
+    // Raw MIME passthrough: a complete message/rfc822 body, or one of these.
     public raw?: string;
     public raw_base64?: string;
 

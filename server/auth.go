@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Port of server/modules/auth — token = aesEncrypt(identity + "|-|" + expiryMs).
+// Tokens are aesEncrypt(identity + "|-|" + expiryMs).
 
 func identityFromToken(token string) string {
 	dt, ok := aesDecrypt(token)
@@ -177,9 +177,6 @@ func preRegisterUser(name, email, password string) error {
 	token := aesEncrypt(payload)
 	verifyURL := settingGet("client_url") + "/verify?token=" + url.QueryEscape(token)
 	fromRaw := settingGet("allowed_from_domains")
-	if fromRaw == "" {
-		fromRaw = settingGet("allowed_domains")
-	}
 	from := "noreply@example.com"
 	if d := strings.Split(fromRaw+",", ",")[0]; strings.TrimSpace(d) != "" {
 		from = "noreply@" + strings.TrimSpace(d)

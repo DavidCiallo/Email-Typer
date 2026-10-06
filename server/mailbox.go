@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// Port of server/modules/mailbox (sync/test are IMAP — stubbed, both live
-// mailboxes are api-type).
+// sync/test target IMAP; both live mailboxes are api-type today.
 
 var imapProviders = []map[string]any{
 	{"key": "163", "label": "网易 163", "host": "imap.163.com", "port": 993, "tls": true},
@@ -76,9 +75,9 @@ func mailboxLoadAll(mailboxType string) []*MailboxRow {
 	return out
 }
 
-// allowedDomains: configured domains + maildir folders that contain new/.
+// allowedDomains: managed domains + maildir folders that contain new/.
 func mailboxAllowedDomains() []string {
-	configured := splitCSV(strings.ToLower(settingGet("allowed_domains")))
+	configured := splitCSV(strings.ToLower(settingGet("allowed_from_domains")))
 	discovered := map[string]bool{}
 	entries, err := osReadDir(maildirRoot())
 	if err == nil {

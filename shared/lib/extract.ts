@@ -1,17 +1,8 @@
-/**
- * Body content extractors — run once at ingest (and during index migration);
- * results are stored as small index fields so the inbox can filter without
- * touching bodies.
- */
 const CODE_RE = /\d{6}/g;
 const LINK_RE = /https?:\/\/[^\s<>"'）)\]]+/gi;
 
-/**
- * A 6-digit number only counts as a verification code when a code keyword —
- * 验证码/校验码/动态码 (CN) or code/verification/otp/passcode... (EN) — appears
- * within ±32 characters of it in the tag-stripped text. Bare numbers (order
- * ids, prices, timestamps) don't count.
- */
+// A 6-digit number only counts as a code when a keyword appears within ±32
+// characters of it — order ids and prices are 6 digits too.
 const CODE_HINT_RE =
     /(验证码|校验码|动态码|动态密码|认证码|短信码|验证代码)|(\b(verification|verify|verified|code|otp|one[ -]?time|passcode|pass[ -]?code|security|pin|confirm)\b)/i;
 
@@ -41,7 +32,7 @@ export function extractCodes(text?: string, html?: string): string[] {
     return Array.from(new Set(out));
 }
 
-/** Distinct http(s) URLs found in the body (raw html kept — href URLs count), capped. */
+/** http(s) URLs found in the body, capped. */
 export function extractLinks(text?: string, html?: string): string[] {
     const source = `${text || ""}\n${html || ""}`;
     if (!source.trim()) return [];
