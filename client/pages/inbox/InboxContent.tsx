@@ -198,7 +198,7 @@ const InboxContentModal = ({
     }
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+            <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-5xl">
                 <DialogHeader>
                     <DialogTitle>邮件详情</DialogTitle>
                 </DialogHeader>
