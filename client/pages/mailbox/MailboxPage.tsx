@@ -24,6 +24,7 @@ import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
 import MailboxGrantDialog from "./MailboxGrantDialog";
 
 const DERIVED_PAGE_SIZE = 10;
+const MANAGED_PAGE_SIZE = 10;
 
 const TYPE_LABEL: Record<string, string> = {
     catchall: "本地地址",
@@ -75,10 +76,16 @@ const MailboxPage = () => {
     const [derivedPage, setDerivedPage] = useState(1);
 
     const [domainFilter, setDomainFilter] = useState("all");
+    const [managedPage, setManagedPage] = useState(1);
     const domainList = useMemo(() => Array.from(new Set(boxes.map((b) => b.domain))).sort(), [boxes]);
     const filteredBoxes = useMemo(
         () => (domainFilter === "all" ? boxes : boxes.filter((b) => b.domain === domainFilter)),
         [boxes, domainFilter],
+    );
+    const managedTotalPages = Math.max(1, Math.ceil(filteredBoxes.length / MANAGED_PAGE_SIZE));
+    const pagedBoxes = filteredBoxes.slice(
+        (Math.min(managedPage, managedTotalPages) - 1) * MANAGED_PAGE_SIZE,
+        Math.min(managedPage, managedTotalPages) * MANAGED_PAGE_SIZE,
     );
 
     const filteredDerived = useMemo(() => {
@@ -152,9 +159,13 @@ const MailboxPage = () => {
         setAdopting(address);
         MailboxRouter.save(
             { mailbox: { type: "catchall", address, name: address } },
-            () => {
+            (data: any) => {
                 setAdopting(null);
-                toast({ title: `已收编 ${address}`, color: "success" });
+                if (data?.success === false) {
+                    toast({ title: data.message || `加入管理失败 ${address}`, color: "danger" });
+                    return;
+                }
+                toast({ title: `已加入管理 ${address}`, color: "success" });
                 refreshList();
             },
         );
@@ -164,7 +175,7 @@ const MailboxPage = () => {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
             <p className="text-muted-foreground text-sm">
                 管理系统的收件地址：本地地址即来即收；API 邮箱供外部系统推送邮件；IMAP 邮箱定时同步网易 / QQ
-                等外部邮箱。未知地址收到信后会出现在「未管理地址」，可一键收编。
+                等外部邮箱。未知地址收到信后会出现在「未管理地址」，可一键加入管理。
             </p>
 
             <div className="flex flex-row items-center justify-between">
@@ -205,7 +216,7 @@ const MailboxPage = () => {
                         {[{ domain: "all", count: boxes.length }, ...domainList.map((d) => ({ domain: d, count: boxes.filter((b) => b.domain === d).length }))].map(({ domain, count }) => (
                             <button
                                 key={domain}
-                                onClick={() => setDomainFilter(domain)}
+                                onClick={() => { setDomainFilter(domain); setManagedPage(1); }}
                                 className={cn(
                                     "rounded-full border px-3 py-1 text-xs transition-colors",
                                     domainFilter === domain
@@ -238,7 +249,7 @@ const MailboxPage = () => {
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredBoxes.map((row) => (
+                                pagedBoxes.map((row) => (
                                     <TableRow key={row.id}>
                                         <TableCell>
                                             <div className="truncate" title={row.name}>{row.name}</div>
@@ -289,6 +300,10 @@ const MailboxPage = () => {
                             )}
                         </TableBody>
                     </Table>
+                </div>
+                <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-sm">共 {filteredBoxes.length} 个邮箱</span>
+                    <Pagination page={managedPage} total={managedTotalPages} onChange={setManagedPage} />
                 </div>
                 </div>
             ) : (
@@ -341,7 +356,7 @@ const MailboxPage = () => {
                                                     onClick={() => adopt(item.address)}
                                                 >
                                                     <Plus className="size-3.5" />
-                                                    收编为本地邮箱
+                                                    加入管理
                                                 </Button>
                                             </div>
                                         </TableCell>
