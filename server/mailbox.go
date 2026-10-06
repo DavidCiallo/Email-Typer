@@ -52,6 +52,29 @@ func mailboxFindByAddress(address string) *MailboxRow {
 	return m
 }
 
+// adoptManagedAddress creates the local mailbox for an unknown address whose
+// domain is managed, so API-delivered mail lands in a real mailbox without a
+// manual step. Returns the mailbox id, or "" when the address is not eligible.
+func adoptManagedAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" || mailboxFindByAddress(address) != nil {
+		return ""
+	}
+	at := strings.Index(address, "@")
+	if at == -1 || at+1 >= len(address) {
+		return ""
+	}
+	domain := strings.ToLower(address[at+1:])
+	if !containsStr(splitCSV(strings.ToLower(settingGet("allowed_from_domains"))), domain) {
+		return ""
+	}
+	box, err := mailboxSave(mailboxSaveBody{Type: "catchall", Address: address, Name: address}, "")
+	if err != nil {
+		return ""
+	}
+	return box.ID
+}
+
 func mailboxLoadAll(mailboxType string) []*MailboxRow {
 	query := `SELECT ` + mailboxCols + ` FROM mailboxes WHERE delete_time IS NULL`
 	args := []any{}

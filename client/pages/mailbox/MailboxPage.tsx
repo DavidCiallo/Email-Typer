@@ -156,7 +156,6 @@ const MailboxPage = () => {
                 setAdopting(null);
                 toast({ title: `已收编 ${address}`, color: "success" });
                 refreshList();
-                setActiveTab("managed");
             },
         );
     }

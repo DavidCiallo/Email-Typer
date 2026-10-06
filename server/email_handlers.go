@@ -639,6 +639,8 @@ func emailPush(c *Ctx) (any, error) {
 		if to != "" {
 			if box := mailboxFindByAddress(to); box != nil {
 				mailboxID = box.ID
+			} else {
+				mailboxID = adoptManagedAddress(to)
 			}
 		}
 		return ingestOptions{source: "api", mailboxID: mailboxID, folder: "_api_recv"}
