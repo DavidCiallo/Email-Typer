@@ -23,10 +23,11 @@ interface Props {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     mailbox: any | null;
+    onChanged?: () => void;
 }
 
 /** Admin dialog: create / view / revoke the temporary access grant (tauth). */
-const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox }: Props) => {
+const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props) => {
     const [grant, setGrant] = useState<any | null>(null);
     const [loading, setLoading] = useState(false);
     const [days, setDays] = useState(7);
@@ -59,6 +60,7 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox }: Props) => {
             setGrant(result.grant);
             setCreatedLink(`${location.origin}/tauth=${result.token}`);
             toast({ title: "授权链接已生成", color: "success" });
+            onChanged?.();
         });
     }
 
@@ -68,6 +70,7 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox }: Props) => {
             toast({ title: "授权已吊销", color: "primary" });
             setGrant(null);
             setCreatedLink("");
+            onChanged?.();
         });
     }
 
