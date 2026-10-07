@@ -336,7 +336,11 @@ func mailboxList(c *Ctx) (any, error) {
 	c.Decode(&req)
 	list := []map[string]any{}
 	for _, m := range mailboxLoadAll(req.Type) {
-		list = append(list, mailboxToDTO(m))
+		dto := mailboxToDTO(m)
+		if g := grantFindActiveByMailbox(m.ID); g != nil {
+			dto["grant"] = grantJSON(g)
+		}
+		list = append(list, dto)
 	}
 	return map[string]any{"list": list, "domains": mailboxAllowedDomains()}, nil
 }

@@ -32,21 +32,21 @@ const TYPE_LABEL: Record<string, string> = {
     imap: "IMAP 同步",
 };
 
-function StatusBadge({ row }: { row: any }) {
-    if (row.status === "error") {
-        return (
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <Badge variant="destructive">异常</Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-64 break-all">{row.sync_error || "同步出错"}</TooltipContent>
-            </Tooltip>
-        );
+function GrantBadge({ row }: { row: any }) {
+    if (!row.grant) {
+        return <Badge variant="outline" className="text-muted-foreground">空闲</Badge>;
     }
-    if (row.status === "disabled") {
-        return <Badge variant="secondary">已停用</Badge>;
-    }
-    return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">正常</Badge>;
+    const days = Math.max(0, Math.ceil((row.grant.end_time - Date.now()) / 86400000));
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <Badge className="bg-amber-600 text-white hover:bg-amber-600">授权中 · 剩 {days} 天</Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64 break-all">
+                {formatSyncTime(row.grant.start_time)} ~ {formatSyncTime(row.grant.end_time)}
+            </TooltipContent>
+        </Tooltip>
+    );
 }
 
 function formatSyncTime(ts: number | null): string {
@@ -233,10 +233,9 @@ const MailboxPage = () => {
                     <Table className="table-fixed min-w-[760px]">
                         <TableHeader>
                             <TableRow>
-                                <TableHead>名称</TableHead>
-                                <TableHead className="w-28">类型</TableHead>
                                 <TableHead className="w-64">地址</TableHead>
-                                <TableHead className="w-24">状态</TableHead>
+                                <TableHead className="w-32">授权</TableHead>
+                                <TableHead>备注</TableHead>
                                 <TableHead className="w-40">最近同步</TableHead>
                                 <TableHead className="w-56 text-right">操作</TableHead>
                             </TableRow>
@@ -244,7 +243,7 @@ const MailboxPage = () => {
                         <TableBody>
                             {filteredBoxes.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-muted-foreground h-24 text-center">
+                                    <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
                                         暂无邮箱，点击右上角「新建邮箱」创建
                                     </TableCell>
                                 </TableRow>
@@ -252,18 +251,20 @@ const MailboxPage = () => {
                                 pagedBoxes.map((row) => (
                                     <TableRow key={row.id}>
                                         <TableCell>
-                                            <div className="truncate" title={row.name}>{row.name}</div>
-                                            {row.note && (
-                                                <div className="text-muted-foreground truncate text-xs" title={row.note}>{row.note}</div>
+                                            <div className="truncate" title={row.address}>{row.address}</div>
+                                            <div className="text-muted-foreground truncate text-xs">
+                                                {TYPE_LABEL[row.type] || row.type}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell><GrantBadge row={row} /></TableCell>
+                                        <TableCell>
+                                            <div className="truncate" title={row.note}>{row.note || "-"}</div>
+                                            {row.grant?.note && (
+                                                <div className="text-muted-foreground truncate text-xs" title={row.grant.note}>
+                                                    授权：{row.grant.note}
+                                                </div>
                                             )}
                                         </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline">{TYPE_LABEL[row.type] || row.type}</Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="truncate" title={row.address}>{row.address}</div>
-                                        </TableCell>
-                                        <TableCell><StatusBadge row={row} /></TableCell>
                                         <TableCell className="text-muted-foreground text-xs">
                                             {row.type === "imap" ? formatSyncTime(row.last_sync_time) : "-"}
                                         </TableCell>
@@ -377,6 +378,7 @@ const MailboxPage = () => {
                 isOpen={!!grantBox}
                 onOpenChange={(open) => !open && setGrantBox(null)}
                 mailbox={grantBox}
+                onChanged={() => refreshList()}
             />
 
             <MailboxFormModal
