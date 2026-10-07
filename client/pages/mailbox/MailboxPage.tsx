@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MailboxRouter } from "../../api/instance";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -67,6 +68,7 @@ function formatDerivedTime(ts: number): string {
 }
 
 const MailboxPage = () => {
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<"managed" | "derived">("managed");
     const [boxes, setBoxes] = useState<any[]>([]);
     const [domains, setDomains] = useState<string[]>([]);
@@ -230,14 +232,14 @@ const MailboxPage = () => {
                     </div>
                 )}
                 <div className="rounded-lg border bg-card shadow-xs">
-                    <Table className="table-fixed min-w-[760px]">
+                    <Table className="table-fixed min-w-[900px]">
                         <TableHeader>
                             <TableRow>
                                 <TableHead className="w-64">地址</TableHead>
                                 <TableHead className="w-32">授权</TableHead>
                                 <TableHead>备注</TableHead>
                                 <TableHead className="w-40">最近同步</TableHead>
-                                <TableHead className="w-56 text-right">操作</TableHead>
+                                <TableHead className="w-80 text-right">操作</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -270,6 +272,14 @@ const MailboxPage = () => {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-row justify-end gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => navigate(`/inbox?to=${encodeURIComponent(row.address)}`)}
+                                                >
+                                                    <Inbox className="size-3.5" />
+                                                    查看邮件
+                                                </Button>
                                                 {row.type === "imap" && (
                                                     <Button
                                                         size="sm"

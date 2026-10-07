@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { EmailRouter, MailboxRouter } from "../../api/instance";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -24,6 +25,7 @@ import InboxList from "./InboxList";
 const PAGE_SIZE = 10;
 
 const EmailPage = () => {
+    const [searchParams] = useSearchParams();
     const [allEmailList, setAllEmailList] = useState<any[]>([]);
     const [total, setTotal] = useState<number>(0);
     const [page, setPage] = useState(1);
@@ -31,7 +33,10 @@ const EmailPage = () => {
     const [searchInput, setSearchInput] = useState("");
     const [search, setSearch] = useState("");
     // "all" | "mailbox:<address>" | "acct:<localpart>"
-    const [accountFilter, setAccountFilter] = useState("all");
+    const [accountFilter, setAccountFilter] = useState(() => {
+        const to = searchParams.get("to");
+        return to ? `to:${to}` : "all";
+    });
     // "all" | "code" | "links" | "attachments"
     const [contentFilter, setContentFilter] = useState("all");
     const [mailboxes, setMailboxes] = useState<any[]>([]);
