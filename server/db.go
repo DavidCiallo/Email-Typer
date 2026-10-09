@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -55,11 +56,13 @@ CREATE TABLE IF NOT EXISTS mailboxes (
 	sync_interval INTEGER NOT NULL DEFAULT 0, credential TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active',
 	forward_enabled INTEGER NOT NULL DEFAULT 0, sync_error TEXT NOT NULL DEFAULT '', last_sync_time INTEGER,
 	last_uid INTEGER NOT NULL DEFAULT 0, uidvalidity INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '',
+	labels TEXT NOT NULL DEFAULT '[]',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 
 CREATE TABLE IF NOT EXISTS mailboxgrants (
 	id TEXT PRIMARY KEY, mailbox_id TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
-	token_hash TEXT NOT NULL DEFAULT '', start_time INTEGER NOT NULL DEFAULT 0, end_time INTEGER NOT NULL DEFAULT 0,
+	token_hash TEXT NOT NULL DEFAULT '', grant_link TEXT NOT NULL DEFAULT '',
+	start_time INTEGER NOT NULL DEFAULT 0, end_time INTEGER NOT NULL DEFAULT 0,
 	note TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 
@@ -71,6 +74,15 @@ CREATE TABLE IF NOT EXISTS sendlogs (
 	id TEXT PRIMARY KEY, from_addr TEXT NOT NULL DEFAULT '', to_addr TEXT NOT NULL DEFAULT '',
 	subject TEXT NOT NULL DEFAULT '', html TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
 	channel TEXT NOT NULL DEFAULT 'external', error TEXT NOT NULL DEFAULT '', attachments TEXT,
+	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
+
+CREATE TABLE IF NOT EXISTS autotasks (
+	id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
+	kind TEXT NOT NULL DEFAULT 'daily', time_of_day TEXT NOT NULL DEFAULT '08:00',
+	weekdays TEXT NOT NULL DEFAULT '', month_day INTEGER NOT NULL DEFAULT 1,
+	time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+	action TEXT NOT NULL DEFAULT '', params TEXT NOT NULL DEFAULT '{}',
+	last_run_at INTEGER, last_status TEXT NOT NULL DEFAULT '', last_message TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 `
 
@@ -85,7 +97,19 @@ func openDB() error {
 		return fmt.Errorf("schema: %w", err)
 	}
 	db = d
+	// columns added after the first release; every connection runs it because
+	// the ?_pragma cache setting rejects ALTER TABLE
+	for _, stmt := range migrations {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migration %q: %w", stmt, err)
+		}
+	}
 	return nil
+}
+
+var migrations = []string{
+	`ALTER TABLE mailboxgrants ADD COLUMN grant_link TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE mailboxes ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'`,
 }
 
 func metaGet(k string) string {

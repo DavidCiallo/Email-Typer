@@ -50,14 +50,22 @@ func registerRoutes() {
 	apiHandlers["/api/mailbox/save"] = mailboxSaveHandler
 	apiHandlers["/api/mailbox/delete"] = mailboxDeleteHandler
 	apiHandlers["/api/mailbox/addresses"] = mailboxAddresses
+	apiHandlers["/api/mailbox/recipients"] = mailboxRecipients
 	apiHandlers["/api/mailbox/sync"] = mailboxSyncHandler
 	apiHandlers["/api/mailbox/test"] = mailboxTestHandler
 	apiHandlers["/api/mailbox/providers"] = mailboxProviders
+	apiHandlers["/api/mailbox/label-save"] = mailboxLabelSave
+	apiHandlers["/api/mailbox/label-remove"] = mailboxLabelRemove
 	apiHandlers["/api/mailbox/grant-get"] = mailboxGrantGet
 	apiHandlers["/api/mailbox/grant-create"] = mailboxGrantCreate
 	apiHandlers["/api/mailbox/grant-revoke"] = mailboxGrantRevoke
 	apiHandlers["/api/mailbox/grant-list"] = mailboxGrantList
 	apiHandlers["/api/mailbox/tauth-info"] = mailboxTauthInfo
+
+	apiHandlers["/api/autotask/list"] = autoTaskList
+	apiHandlers["/api/autotask/save"] = autoTaskSave
+	apiHandlers["/api/autotask/delete"] = autoTaskDelete
+	apiHandlers["/api/autotask/run-now"] = autoTaskRunNow
 }
 
 func main() {

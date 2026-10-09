@@ -209,6 +209,7 @@ type MailboxRow struct {
 	LastUID       int    `json:"last_uid"`
 	UIDValidity   int    `json:"uidvalidity"`
 	Note          string `json:"note"`
+	Labels        string `json:"labels"` // JSON array of tag strings
 	CreateTime    int64  `json:"create_time"`
 	UpdateTime    *int64 `json:"update_time"`
 	DeleteTime    *int64 `json:"delete_time"`
@@ -219,6 +220,7 @@ type GrantRow struct {
 	MailboxID  string `json:"mailbox_id"`
 	Address    string `json:"address"`
 	TokenHash  string `json:"token_hash"`
+	GrantLink  string `json:"grant_link"`
 	StartTime  int64  `json:"start_time"`
 	EndTime    int64  `json:"end_time"`
 	Note       string `json:"note"`
@@ -298,14 +300,14 @@ func scanMailbox(sc interface{ Scan(...any) error }) (*MailboxRow, error) {
 	m := &MailboxRow{}
 	err := sc.Scan(&m.ID, &m.Name, &m.Type, &m.Address, &m.Domain, &m.LocalPart, &m.Provider,
 		&m.ImapHost, &m.ImapPort, &m.ImapTLS, &m.SyncInterval, &m.Credential, &m.Status,
-		&m.ForwardEnable, &m.SyncError, &m.LastSyncTime, &m.LastUID, &m.UIDValidity, &m.Note,
+		&m.ForwardEnable, &m.SyncError, &m.LastSyncTime, &m.LastUID, &m.UIDValidity, &m.Note, &m.Labels,
 		&m.CreateTime, &m.UpdateTime, &m.DeleteTime)
 	return m, err
 }
 
 func scanGrant(sc interface{ Scan(...any) error }) (*GrantRow, error) {
 	g := &GrantRow{}
-	err := sc.Scan(&g.ID, &g.MailboxID, &g.Address, &g.TokenHash, &g.StartTime, &g.EndTime,
+	err := sc.Scan(&g.ID, &g.MailboxID, &g.Address, &g.TokenHash, &g.GrantLink, &g.StartTime, &g.EndTime,
 		&g.Note, &g.CreateTime, &g.UpdateTime, &g.DeleteTime)
 	return g, err
 }
@@ -397,9 +399,9 @@ func insertMailboxRow(tx *sql.Tx, row map[string]any) error {
 }
 
 func insertGrantRow(tx *sql.Tx, row map[string]any) error {
-	_, err := tx.Exec(`INSERT OR REPLACE INTO mailboxgrants (id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time)
-		VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		rowID(row), asStr(row["mailbox_id"]), asStr(row["address"]), asStr(row["token_hash"]),
+	_, err := tx.Exec(`INSERT OR REPLACE INTO mailboxgrants (id, mailbox_id, address, token_hash, grant_link, start_time, end_time, note, create_time, update_time, delete_time)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		rowID(row), asStr(row["mailbox_id"]), asStr(row["address"]), asStr(row["token_hash"]), asStr(row["grant_link"]),
 		asInt(row["start_time"]), asInt(row["end_time"]), asStr(row["note"]),
 		asInt(orDefaultAny(row["create_time"], nowMillis())), rowTimePtr(row, "update_time"), rowTimePtr(row, "delete_time"))
 	return err
