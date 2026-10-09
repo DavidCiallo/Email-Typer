@@ -29,7 +29,7 @@ func resolveProviderPreset(key string) map[string]any {
 	return nil
 }
 
-const mailboxCols = `id, name, type, address, domain, local_part, provider, imap_host, imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_sync_time, last_uid, uidvalidity, note, create_time, update_time, delete_time`
+const mailboxCols = `id, name, type, address, domain, local_part, provider, imap_host, imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_sync_time, last_uid, uidvalidity, note, labels, create_time, update_time, delete_time`
 
 func mailboxFindByID(id string) *MailboxRow {
 	row := db.QueryRow(`SELECT `+mailboxCols+` FROM mailboxes WHERE id = ? AND delete_time IS NULL`, id)
@@ -147,8 +147,98 @@ func mailboxToDTO(m *MailboxRow) map[string]any {
 		"imap_host": m.ImapHost, "imap_port": m.ImapPort, "imap_tls": m.ImapTLS,
 		"sync_interval": m.SyncInterval, "status": orDefault(m.Status, "active"),
 		"forward_enabled": forwardEnabled, "sync_error": m.SyncError,
-		"last_sync_time": lastSync, "note": m.Note, "has_credential": m.Credential != "",
+		"last_sync_time": lastSync, "note": m.Note, "labels": mailboxLabels(m), "has_credential": m.Credential != "",
 	}
+}
+
+// mailboxLabels parses the stored JSON array; a mailbox with no tags yields [].
+func mailboxLabels(m *MailboxRow) []string {
+	out := []string{}
+	if m.Labels != "" {
+		json.Unmarshal([]byte(m.Labels), &out)
+	}
+	return out
+}
+
+// allMailboxLabels aggregates tags across mailboxes, so a tag someone already
+// used shows up as a suggestion without a separate tag table.
+func allMailboxLabels() []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, m := range mailboxLoadAll("") {
+		for _, l := range mailboxLabels(m) {
+			if !seen[l] {
+				seen[l] = true
+				out = append(out, l)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+type mailboxLabelBody struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+func mailboxLabelSave(c *Ctx) (any, error) {
+	if err := requireAdmin(c.Auth); err != nil {
+		return nil, err
+	}
+	var req mailboxLabelBody
+	if err := c.Decode(&req); err != nil {
+		return nil, throwErr("Invalid request")
+	}
+	label := strings.TrimSpace(req.Label)
+	if label == "" {
+		return nil, throwErr("标签不能为空")
+	}
+	if len([]rune(label)) > 20 {
+		return nil, throwErr("标签最多 20 个字")
+	}
+	box := mailboxFindByID(req.ID)
+	if box == nil {
+		return nil, throwErr("Mailbox not found")
+	}
+	labels := mailboxLabels(box)
+	for _, l := range labels {
+		if l == label {
+			return mailboxToDTO(box), nil
+		}
+	}
+	labels = append(labels, label)
+	raw, _ := json.Marshal(labels)
+	if _, err := db.Exec(`UPDATE mailboxes SET labels = ?, update_time = ? WHERE id = ?`, string(raw), nowMillis(), req.ID); err != nil {
+		return nil, throwErr("Save failed")
+	}
+	return mailboxToDTO(mailboxFindByID(req.ID)), nil
+}
+
+func mailboxLabelRemove(c *Ctx) (any, error) {
+	if err := requireAdmin(c.Auth); err != nil {
+		return nil, err
+	}
+	var req mailboxLabelBody
+	if err := c.Decode(&req); err != nil {
+		return nil, throwErr("Invalid request")
+	}
+	box := mailboxFindByID(req.ID)
+	if box == nil {
+		return nil, throwErr("Mailbox not found")
+	}
+	label := strings.TrimSpace(req.Label)
+	kept := []string{}
+	for _, l := range mailboxLabels(box) {
+		if l != label {
+			kept = append(kept, l)
+		}
+	}
+	raw, _ := json.Marshal(kept)
+	if _, err := db.Exec(`UPDATE mailboxes SET labels = ?, update_time = ? WHERE id = ?`, string(raw), nowMillis(), req.ID); err != nil {
+		return nil, throwErr("Save failed")
+	}
+	return mailboxToDTO(mailboxFindByID(req.ID)), nil
 }
 
 type mailboxSaveBody struct {
@@ -257,6 +347,41 @@ func mailboxSave(body mailboxSaveBody, id string) (*MailboxRow, error) {
 	return mailboxFindByID(newID), nil
 }
 
+// mailboxRecipients lists every known address with its labels and note, so the
+// send form can search recipients by any of the three.
+func mailboxRecipients(c *Ctx) (any, error) {
+	if _, _, err := resolveScope(c); err != nil {
+		return nil, err
+	}
+	out := []map[string]any{}
+	seen := map[string]bool{}
+	for _, m := range mailboxLoadAll("") {
+		if m.Type == "imap" {
+			continue // an external mailbox is not a recipient here
+		}
+		seen[m.Address] = true
+		out = append(out, map[string]any{
+			"address": m.Address, "labels": mailboxLabels(m), "note": m.Note,
+		})
+	}
+	rows, err := db.Query(`SELECT to_addr FROM emails WHERE delete_time IS NULL`)
+	if err == nil {
+		for rows.Next() {
+			var to string
+			if rows.Scan(&to) != nil {
+				continue
+			}
+			if addr := extractAddress(to); addr != "" && !seen[addr] {
+				seen[addr] = true
+				out = append(out, map[string]any{"address": addr, "labels": []string{}, "note": ""})
+			}
+		}
+		rows.Close()
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["address"].(string) < out[j]["address"].(string) })
+	return map[string]any{"list": out}, nil
+}
+
 func imapProviderOrEmpty(mailboxType, provider string) string {
 	if mailboxType == "imap" {
 		return provider
@@ -342,7 +467,7 @@ func mailboxList(c *Ctx) (any, error) {
 		}
 		list = append(list, dto)
 	}
-	return map[string]any{"list": list, "domains": mailboxAllowedDomains()}, nil
+	return map[string]any{"list": list, "domains": mailboxAllowedDomains(), "labels": allMailboxLabels()}, nil
 }
 
 func mailboxSaveHandler(c *Ctx) (any, error) {
@@ -404,7 +529,7 @@ func mailboxProviders(c *Ctx) (any, error) {
 
 // ---------- grants (tauth) ----------
 
-const grantCols = `id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time`
+const grantCols = `id, mailbox_id, address, token_hash, grant_link, start_time, end_time, note, create_time, update_time, delete_time`
 
 func grantFindActiveByMailbox(mailboxID string) *GrantRow {
 	rows, err := db.Query(`SELECT `+grantCols+` FROM mailboxgrants WHERE mailbox_id = ? AND delete_time IS NULL`, mailboxID)
@@ -448,6 +573,7 @@ func grantJSON(g *GrantRow) map[string]any {
 	}
 	return map[string]any{
 		"id": g.ID, "mailbox_id": g.MailboxID, "address": g.Address, "token_hash": g.TokenHash,
+		"grant_link": g.GrantLink,
 		"start_time": g.StartTime, "end_time": g.EndTime, "note": g.Note,
 		"create_time": g.CreateTime, "update_time": updateTime, "delete_time": deleteTime,
 	}
@@ -476,6 +602,7 @@ func mailboxGrantCreate(c *Ctx) (any, error) {
 		MailboxID string `json:"mailbox_id"`
 		Days      int64  `json:"days"`
 		Note      string `json:"note"`
+		Link      string `json:"link"`
 	}
 	if err := c.Decode(&req); err != nil {
 		return nil, throwErr("Invalid request")
@@ -492,11 +619,17 @@ func mailboxGrantCreate(c *Ctx) (any, error) {
 	if endTime <= startTime {
 		return nil, throwErr("有效期无效")
 	}
+	// the client sends the base it is served from, so the stored link keeps
+	// working even though the token is only hashed
 	token := "tauth_" + nanoID(24)
+	link := req.Link + token
+	if req.Link == "" {
+		link = "/tauth=" + token
+	}
 	id := nanoID(6)
-	if _, err := db.Exec(`INSERT INTO mailboxgrants (id, mailbox_id, address, token_hash, start_time, end_time, note, create_time)
-		VALUES (?,?,?,?,?,?,?,?)`,
-		id, req.MailboxID, mailbox.Address, hashGenerate(token), startTime, endTime, req.Note, startTime); err != nil {
+	if _, err := db.Exec(`INSERT INTO mailboxgrants (id, mailbox_id, address, token_hash, grant_link, start_time, end_time, note, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?)`,
+		id, req.MailboxID, mailbox.Address, hashGenerate(token), link, startTime, endTime, req.Note, startTime); err != nil {
 		return nil, throwErr("Create failed")
 	}
 	return map[string]any{"token": token, "grant": grantJSON(grantFindByID(id))}, nil

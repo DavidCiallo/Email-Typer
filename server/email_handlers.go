@@ -43,7 +43,7 @@ type tauthSession struct {
 }
 
 func grantFindByID(id string) *GrantRow {
-	row := db.QueryRow(`SELECT id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time FROM mailboxgrants WHERE id = ?`, id)
+	row := db.QueryRow(`SELECT `+grantCols+` FROM mailboxgrants WHERE id = ?`, id)
 	g, err := scanGrant(row)
 	if err != nil {
 		return nil
@@ -61,7 +61,7 @@ func resolveTauth(token string) *tauthSession {
 	if err != nil {
 		return nil
 	}
-	row := db.QueryRow(`SELECT id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time FROM mailboxgrants WHERE token_hash = ? AND delete_time IS NULL`, hash)
+	row := db.QueryRow(`SELECT `+grantCols+` FROM mailboxgrants WHERE token_hash = ? AND delete_time IS NULL`, hash)
 	g, err := scanGrant(row)
 	if err != nil {
 		return nil
@@ -99,18 +99,18 @@ func emailList(c *Ctx) (any, error) {
 		return nil, err
 	}
 	var req struct {
-		Archived   *bool  `json:"archived"`
-		AccountID  string `json:"account_id"`
-		To         string `json:"to"`
-		Q          string `json:"q"`
-		Blocked    *bool  `json:"blocked"`
-		Source     string `json:"source"`
-		MailboxID  string `json:"mailbox_id"`
-		HasCode    *bool  `json:"has_code"`
-		HasLinks   *bool  `json:"has_links"`
-		HasAttach  *bool  `json:"has_attachments"`
-		Limit      *int64 `json:"limit"`
-		Offset     int64  `json:"offset"`
+		Archived  *bool  `json:"archived"`
+		AccountID string `json:"account_id"`
+		To        string `json:"to"`
+		Q         string `json:"q"`
+		Blocked   *bool  `json:"blocked"`
+		Source    string `json:"source"`
+		MailboxID string `json:"mailbox_id"`
+		HasCode   *bool  `json:"has_code"`
+		HasLinks  *bool  `json:"has_links"`
+		HasAttach *bool  `json:"has_attachments"`
+		Limit     *int64 `json:"limit"`
+		Offset    int64  `json:"offset"`
 	}
 	c.Decode(&req)
 
@@ -275,6 +275,13 @@ func jsonOrNullRaw(raw json.RawMessage) any {
 
 // ---------- send ----------
 
+// Batch sends go out one message per recipient; sendGap keeps a large list
+// from hitting Resend's rate limit as one burst.
+const (
+	sendGap              = 1100 * time.Millisecond
+	maxRecipientsPerSend = 50
+)
+
 func emailSend(c *Ctx) (any, error) {
 	tauth, _, err := resolveScope(c)
 	if err != nil {
@@ -282,10 +289,10 @@ func emailSend(c *Ctx) (any, error) {
 	}
 	var req struct {
 		Email struct {
-			From        string `json:"from"`
-			To          string `json:"to"`
-			Subject     string `json:"subject"`
-			HTML        string `json:"html"`
+			From        string   `json:"from"`
+			To          []string `json:"to"`
+			Subject     string   `json:"subject"`
+			HTML        string   `json:"html"`
 			Attachments []struct {
 				Filename string `json:"filename"`
 				Content  string `json:"content"`
@@ -335,10 +342,6 @@ func emailSend(c *Ctx) (any, error) {
 		return nil, throwErr("附件总大小超限")
 	}
 
-	channel := "external"
-	if resolveResendKey(from) != "" {
-		channel = "resend"
-	}
 	attMetas := []map[string]any{}
 	for _, a := range attachments {
 		attMetas = append(attMetas, map[string]any{
@@ -346,26 +349,71 @@ func emailSend(c *Ctx) (any, error) {
 			"size": (len(a.content)*3 + 2) / 4,
 		})
 	}
-	log := sendLogCreate(from, req.Email.To, req.Email.Subject, req.Email.HTML, channel, nullOrNil(attJSON(attMetas)))
-	if log == nil {
-		return nil, throwErr("Failed to create send log")
+	to := cleanRecipients(req.Email.To)
+	if len(to) == 0 {
+		return nil, throwErr("请填写收件人")
+	}
+	if len(to) > maxRecipientsPerSend {
+		return nil, throwErr("单次最多发送 " + itoa64(int64(maxRecipientsPerSend)) + " 个收件人")
 	}
 
-	if channel == "resend" {
+	channel := "external"
+	if resolveResendKey(from) != "" {
+		channel = "resend"
+	}
+
+	// one message per recipient: nobody sees the others, and a single failure
+	// does not take the rest of the batch down with it
+	sent, failed, errors := 0, 0, []string{}
+	for i, recipient := range to {
+		if i > 0 {
+			time.Sleep(sendGap)
+		}
+		log := sendLogCreate(from, recipient, req.Email.Subject, req.Email.HTML, channel, nullOrNil(attJSON(attMetas)))
+		if log == nil {
+			failed++
+			errors = append(errors, recipient+": 创建发件记录失败")
+			continue
+		}
+		if channel != "resend" {
+			continue // no direct channel: stays pending for the external worker
+		}
 		resendAtts := []map[string]string{}
 		for _, a := range attachments {
 			resendAtts = append(resendAtts, map[string]string{"filename": a.filename, "content": a.content})
 		}
-		ok := sendEmail(sendEmailParams{From: from, To: req.Email.To, Subject: req.Email.Subject, HTML: req.Email.HTML, Attachments: resendAtts})
+		ok := sendEmail(sendEmailParams{From: from, To: recipient, Subject: req.Email.Subject, HTML: req.Email.HTML, Attachments: resendAtts})
 		if ok {
 			sendLogSetStatus(log.ID, "sent", "")
-		} else {
-			sendLogSetStatus(log.ID, "failed", "Resend send failed")
-			return nil, throwErr("Failed to send email")
+			sent++
+			continue
 		}
-		return map[string]any{"status": "sent"}, nil
+		sendLogSetStatus(log.ID, "failed", "Resend send failed")
+		failed++
+		errors = append(errors, recipient+": 发送失败")
 	}
-	return map[string]any{"status": "pending"}, nil
+	if channel != "resend" {
+		return map[string]any{"status": "pending", "total": len(to), "failed": failed, "errors": errors}, nil
+	}
+	return map[string]any{"status": "sent", "total": len(to), "sent": sent, "failed": failed, "errors": errors}, nil
+}
+
+// The client sends one entry per recipient; splitting here tolerates a pasted
+// "a@x.com, b@y.com" line as well.
+func cleanRecipients(raw []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, item := range raw {
+		for _, part := range strings.FieldsFunc(item, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == ' ' }) {
+			addr := strings.ToLower(strings.TrimSpace(part))
+			if addr == "" || !strings.Contains(addr, "@") || seen[addr] {
+				continue
+			}
+			seen[addr] = true
+			out = append(out, addr)
+		}
+	}
+	return out
 }
 
 func attJSON(metas []map[string]any) json.RawMessage {
@@ -543,8 +591,8 @@ func emailReceive(c *Ctx) (any, error) {
 // ---------- push (bridge API) ----------
 
 var (
-	pushMu    sync.Mutex
-	pushHits  = map[string][]int64{}
+	pushMu   sync.Mutex
+	pushHits = map[string][]int64{}
 )
 
 func allowPush(key string) bool {

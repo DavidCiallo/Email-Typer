@@ -20,7 +20,8 @@ import {
 } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
-import { RefreshCw, Plus, Inbox, Search, Clock } from "lucide-react";
+import { textColor } from "../../methods/text";
+import { Plus, Inbox, Search, Clock, X, Pencil, Trash2 } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
 import MailboxGrantDialog from "./MailboxGrantDialog";
 
@@ -33,15 +34,100 @@ const TYPE_LABEL: Record<string, string> = {
     imap: "IMAP 同步",
 };
 
+/** Tag editor for one mailbox: each tag reveals an × on hover, the + adds one. */
+function LabelCell({ row, labels, onChanged }: { row: any; labels: string[]; onChanged: () => void }) {
+    const [open, setOpen] = useState(false);
+    const [draft, setDraft] = useState("");
+    const owned: string[] = row.labels || [];
+    const suggestions = labels.filter((l) => !owned.includes(l) && l.includes(draft.trim()));
+
+    function add(label: string) {
+        const value = label.trim();
+        if (!value) return;
+        MailboxRouter.labelSave({ id: row.id, label: value }, (res: any) => {
+            if (res?.success === false) return toast({ title: res.message || "添加标签失败", color: "danger" });
+            setOpen(false);
+            setDraft("");
+            onChanged();
+        });
+    }
+
+    function remove(label: string) {
+        MailboxRouter.labelRemove({ id: row.id, label }, (res: any) => {
+            if (res?.success === false) return toast({ title: res.message || "删除标签失败", color: "danger" });
+            onChanged();
+        });
+    }
+
+    return (
+        <div className="flex flex-wrap items-center gap-1">
+            {owned.map((label) => (
+                <Badge key={label} variant="outline" className="group/tag max-w-full gap-0" style={textColor(label)}>
+                    {/* the × replaces this spacer on hover, so the text never shifts */}
+                    <span className=" shrink-0" aria-hidden />
+                    <span className="truncate">{label}</span>
+                    <button
+                        type="button"
+                        aria-label={`删除标签 ${label}`}
+                        className="relative w-0 shrink-0 overflow-hidden opacity-0 transition-opacity group-hover/tag:w-2.5 group-hover/tag:opacity-100"
+                        onClick={() => remove(label)}
+                    >
+                        <X className="size-3" />
+                    </button>
+                </Badge>
+            ))}
+            {open ? (
+                <div
+                    className="relative"
+                    // a suggestion click fires after blur; the delay lets it land first
+                    onBlur={() => window.setTimeout(() => { setOpen(false); setDraft(""); }, 150)}
+                >
+                    <Input
+                        autoFocus
+                        className="h-7 w-24 px-2 text-sm"
+                        placeholder="输入标签"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") add(draft);
+                            if (e.key === "Escape") { setOpen(false); setDraft(""); }
+                        }}
+                    />
+                    {suggestions.length > 0 && (
+                        <div className="bg-popover absolute z-50 mt-1 w-24 overflow-y-auto rounded-md border p-0.5 shadow-md flex flex-col">
+                            {suggestions.map((label) => (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    className="hover:bg-muted w-full truncate rounded-sm px-1.5 py-0.5 my-[1px] text-left text-[12px]"
+                                    style={textColor(label)}
+                                    onClick={() => add(label)}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <Button size="sm" variant="ghost" className="h-6" onClick={() => setOpen(true)} aria-label="添加标签">
+                    <Plus className="size-3.5" />
+                </Button>
+            )}
+        </div>
+    );
+}
+
 function GrantBadge({ row }: { row: any }) {
+    const base = "w-24 justify-center tabular-nums";
     if (!row.grant) {
-        return <Badge variant="outline" className="text-muted-foreground">空闲</Badge>;
+        return <Badge variant="outline" className={cn(base, "text-muted-foreground")}>空闲</Badge>;
     }
     const days = Math.max(0, Math.ceil((row.grant.end_time - Date.now()) / 86400000));
     return (
         <Tooltip>
             <TooltipTrigger asChild>
-                <Badge className="bg-amber-600 text-white hover:bg-amber-600">授权中 · 剩 {days} 天</Badge>
+                <Badge className={cn(base, "bg-amber-600 text-white hover:bg-amber-600")}>授权 余 {days} 天</Badge>
             </TooltipTrigger>
             <TooltipContent className="max-w-64 break-all">
                 {formatSyncTime(row.grant.start_time)} ~ {formatSyncTime(row.grant.end_time)}
@@ -72,18 +158,29 @@ const MailboxPage = () => {
     const [activeTab, setActiveTab] = useState<"managed" | "derived">("managed");
     const [boxes, setBoxes] = useState<any[]>([]);
     const [domains, setDomains] = useState<string[]>([]);
+    const [allLabels, setAllLabels] = useState<string[]>([]);
     const [providers, setProviders] = useState<ProviderPreset[]>([]);
     const [derived, setDerived] = useState<any[]>([]);
     const [derivedSearch, setDerivedSearch] = useState("");
     const [derivedPage, setDerivedPage] = useState(1);
 
     const [domainFilter, setDomainFilter] = useState("all");
+    const [managedSearch, setManagedSearch] = useState("");
+    const [labelFilter, setLabelFilter] = useState("all");
     const [managedPage, setManagedPage] = useState(1);
     const domainList = useMemo(() => Array.from(new Set(boxes.map((b) => b.domain))).sort(), [boxes]);
-    const filteredBoxes = useMemo(
-        () => (domainFilter === "all" ? boxes : boxes.filter((b) => b.domain === domainFilter)),
-        [boxes, domainFilter],
-    );
+    // address, label and note are all searchable from the one box
+    const filteredBoxes = useMemo(() => {
+        const q = managedSearch.trim().toLowerCase();
+        return boxes.filter((b) => {
+            if (domainFilter !== "all" && b.domain !== domainFilter) return false;
+            if (labelFilter !== "all" && !(b.labels || []).includes(labelFilter)) return false;
+            if (!q) return true;
+            return b.address.toLowerCase().includes(q)
+                || (b.note || "").toLowerCase().includes(q)
+                || (b.labels || []).some((l: string) => l.toLowerCase().includes(q));
+        });
+    }, [boxes, domainFilter, labelFilter, managedSearch]);
     const managedTotalPages = Math.max(1, Math.ceil(filteredBoxes.length / MANAGED_PAGE_SIZE));
     const pagedBoxes = filteredBoxes.slice(
         (Math.min(managedPage, managedTotalPages) - 1) * MANAGED_PAGE_SIZE,
@@ -100,7 +197,6 @@ const MailboxPage = () => {
     const [isFormOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<any | null>(null);
     const [grantBox, setGrantBox] = useState<any | null>(null);
-    const [syncingId, setSyncingId] = useState<string | null>(null);
     const [adopting, setAdopting] = useState<string | null>(null);
 
     function refreshList() {
@@ -108,6 +204,7 @@ const MailboxPage = () => {
             const result = data?.data || data;
             setBoxes(result?.list || []);
             setDomains(result?.domains || []);
+            setAllLabels(result?.labels || []);
         });
         MailboxRouter.addresses({}, (data: any) => {
             const result = data?.data || data;
@@ -140,19 +237,6 @@ const MailboxPage = () => {
     function submitDelete(row: any) {
         MailboxRouter.delete({ id: row.id }, () => {
             toast({ title: "删除成功", color: "primary" });
-            refreshList();
-        });
-    }
-
-    function syncNow(row: any) {
-        setSyncingId(row.id);
-        MailboxRouter.sync({ id: row.id }, (data: any) => {
-            setSyncingId(null);
-            const result = data?.data || data;
-            toast({
-                title: `同步完成：拉取 ${result?.scanned ?? 0} 封，入库 ${result?.imported ?? 0} 封`,
-                color: "success",
-            });
             refreshList();
         });
     }
@@ -213,6 +297,35 @@ const MailboxPage = () => {
 
             {activeTab === "managed" ? (
                 <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-full md:w-72">
+                        <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                        <Input
+                            className="pl-8"
+                            placeholder="搜索地址 / 标签 / 备注…"
+                            value={managedSearch}
+                            onChange={(e) => { setManagedSearch(e.target.value); setManagedPage(1); }}
+                        />
+                    </div>
+                    {allLabels.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {["all", ...allLabels].map((label) => (
+                                <button
+                                    key={label}
+                                    onClick={() => { setLabelFilter(label); setManagedPage(1); }}
+                                    className={cn(
+                                        "rounded-full border px-3 py-1 text-xs transition-colors",
+                                        labelFilter === label
+                                            ? "bg-foreground text-background border-transparent"
+                                            : "text-muted-foreground hover:text-foreground",
+                                    )}
+                                >
+                                    {label === "all" ? "全部标签" : label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 {boxes.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
                         {[{ domain: "all", count: boxes.length }, ...domainList.map((d) => ({ domain: d, count: boxes.filter((b) => b.domain === d).length }))].map(({ domain, count }) => (
@@ -232,21 +345,20 @@ const MailboxPage = () => {
                     </div>
                 )}
                 <div className="rounded-lg border bg-card shadow-xs">
-                    <Table className="table-fixed min-w-[900px]">
+                    <Table className="table-fixed min-w-[880px]">
                         <TableHeader>
                             <TableRow>
-                                <TableHead className="w-64">地址</TableHead>
-                                <TableHead className="w-32">授权</TableHead>
-                                <TableHead>备注</TableHead>
-                                <TableHead className="w-40">最近同步</TableHead>
+                                <TableHead className="w-56">地址</TableHead>
+                                <TableHead className="w-1/3" align="center">标签</TableHead>
+                                <TableHead> 授权&备注 </TableHead>
                                 <TableHead className="w-80 text-right">操作</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredBoxes.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
-                                        暂无邮箱，点击右上角「新建邮箱」创建
+                                    <TableCell colSpan={4} className="text-muted-foreground h-24 text-center">
+                                        {managedSearch || labelFilter !== "all" ? "没有匹配的邮箱" : "暂无邮箱，点击右上角「新建邮箱」创建"}
                                     </TableCell>
                                 </TableRow>
                             ) : (
@@ -258,17 +370,20 @@ const MailboxPage = () => {
                                                 {TYPE_LABEL[row.type] || row.type}
                                             </div>
                                         </TableCell>
-                                        <TableCell><GrantBadge row={row} /></TableCell>
                                         <TableCell>
-                                            <div className="truncate" title={row.note}>{row.note || "-"}</div>
-                                            {row.grant?.note && (
-                                                <div className="text-muted-foreground truncate text-xs" title={row.grant.note}>
-                                                    授权：{row.grant.note}
-                                                </div>
-                                            )}
+                                            <LabelCell row={row} labels={allLabels} onChanged={refreshList} />
                                         </TableCell>
-                                        <TableCell className="text-muted-foreground text-xs">
-                                            {row.type === "imap" ? formatSyncTime(row.last_sync_time) : "-"}
+                                        <TableCell>
+                                            {row.note && <div className="truncate" title={row.note}>{row.note}</div>}
+                                            <div className={cn("flex items-center justify-between gap-3", row.note && "mt-0.5")}>
+                                                <GrantBadge row={row} />
+                                                <span
+                                                    className="text-muted-foreground min-w-0 flex-1 truncate text-xs"
+                                                    title={row.grant?.note || ""}
+                                                >
+                                                    {row.grant?.note || ""}
+                                                </span>
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-row justify-end gap-2">
@@ -278,31 +393,21 @@ const MailboxPage = () => {
                                                     onClick={() => navigate(`/inbox?to=${encodeURIComponent(row.address)}`)}
                                                 >
                                                     <Inbox className="size-3.5" />
-                                                    查看邮件
                                                 </Button>
-                                                {row.type === "imap" && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        disabled={syncingId === row.id}
-                                                        onClick={() => syncNow(row)}
-                                                    >
-                                                        <RefreshCw className={cn("size-3.5", syncingId === row.id && "animate-spin")} />
-                                                        {syncingId === row.id ? "同步中" : "同步"}
-                                                    </Button>
-                                                )}
                                                 <Button size="sm" variant="outline" onClick={() => setGrantBox(row)}>
                                                     <Clock className="size-3.5" />
-                                                    临时授权
                                                 </Button>
-                                                <Button size="sm" variant="outline" onClick={() => openEdit(row)}>编辑</Button>
+                                                <Button size="sm" variant="outline" onClick={() => openEdit(row)} aria-label="编辑">
+                                                    <Pencil className="size-3.5" />
+                                                </Button>
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
                                                     className="text-destructive hover:text-destructive"
+                                                    aria-label="删除"
                                                     onClick={() => submitDelete(row)}
                                                 >
-                                                    删除
+                                                    <Trash2 className="size-3.5" />
                                                 </Button>
                                             </div>
                                         </TableCell>

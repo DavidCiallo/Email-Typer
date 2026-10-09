@@ -188,7 +188,7 @@ func strategyLoadAll() []StrategyRow {
 func grantLiveMap() map[string]bool {
 	live := map[string]bool{}
 	now := nowMillis()
-	r, err := db.Query(`SELECT id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time FROM mailboxgrants WHERE delete_time IS NULL`)
+	r, err := db.Query(`SELECT ` + grantCols + ` FROM mailboxgrants WHERE delete_time IS NULL`)
 	if err != nil {
 		return live
 	}

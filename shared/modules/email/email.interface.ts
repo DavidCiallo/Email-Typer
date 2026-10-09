@@ -91,18 +91,23 @@ export interface EmailSendAttachment {
 
 export class EmailSendBody {
     public from: string;
-    public to: string;
+    /** one entry per recipient; the server sends a separate message to each */
+    public to: string[];
     public subject: string;
     public html: string;
     public text?: string;
     public attachments?: EmailSendAttachment[];
 
     constructor(origin: any) {
-        if (!origin.from || !origin.to || !origin.subject || !origin.html) {
-            throw new Error("From, to, subject and html are required");
+        if (!origin.from || !origin.subject || !origin.html) {
+            throw new Error("From, subject and html are required");
         }
+        const to = (Array.isArray(origin.to) ? origin.to : [origin.to])
+            .map((addr: string) => String(addr || "").trim())
+            .filter(Boolean);
+        if (to.length === 0) throw new Error("At least one recipient is required");
         this.from = origin.from;
-        this.to = origin.to;
+        this.to = to;
         this.subject = origin.subject;
         this.html = origin.html;
         this.text = origin.text || "";
@@ -128,10 +133,10 @@ export class EmailSendRequest implements BaseRequest {
     }
 }
 
-export class EmailSendResponse implements BaseResponse<{ status: string }> {
+export class EmailSendResponse implements BaseResponse<{ status: string; total: number; sent?: number; failed: number; errors: string[] }> {
     public success: boolean;
     public message: string;
-    public data?: { status: string };
+    public data?: { status: string; total: number; sent?: number; failed: number; errors: string[] };
 
     constructor(origin: EmailSendResponse) {
         this.success = origin.success;

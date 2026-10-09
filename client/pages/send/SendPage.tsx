@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { EmailRouter, MailboxRouter } from "../../api/instance";
 import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
 import { Card, CardContent } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
-import { ChevronDown, Paperclip, X } from "lucide-react";
+import { X, Paperclip, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
+import { textColor } from "../../methods/text";
 import { inTauthSession } from "../../methods/tauth";
 import SendHistoryDialog from "./SendHistoryDialog";
 
@@ -65,13 +67,114 @@ function SenderSelect({ value, options, onChange }: {
     );
 }
 
+/** Type a query, or tick addresses from the pool filtered by address/tag/note. */
+function RecipientPicker({ value, options, onChange }: {
+    value: string[];
+    options: any[];
+    onChange: (list: string[]) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const [q, setQ] = useState("");
+    const query = q.trim().toLowerCase();
+
+    function add(addr: string) {
+        const a = addr.trim().toLowerCase();
+        if (!a || value.includes(a)) return;
+        onChange([...value, a]);
+    }
+
+    const filtered = options.filter((o) => {
+        if (value.includes(o.address)) return false;
+        if (!query) return true;
+        return o.address.toLowerCase().includes(query)
+            || (o.labels || []).some((l: string) => l.toLowerCase().includes(query))
+            || (o.note || "").toLowerCase().includes(query);
+    }).slice(0, 50);
+
+    function pick(addr: string) {
+        add(addr);
+        setQ("");
+    }
+
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-md border p-1.5">
+                {value.map((addr) => (
+                    <span key={addr} className="bg-muted flex items-center gap-1 rounded-md px-2 py-1 text-xs">
+                        {/* keep the native email keyboard/validation on the chip input */}
+                        <input
+                            className="pointer-events-none w-0 border-0 bg-transparent p-0"
+                            tabIndex={-1}
+                            value={addr}
+                            readOnly
+                        />
+                        <span className="max-w-48 truncate">{addr}</span>
+                        <button type="button" aria-label={`移除 ${addr}`} onClick={() => onChange(value.filter((a) => a !== addr))}>
+                            <X className="size-3.5" />
+                        </button>
+                    </span>
+                ))}
+                <div className="relative min-w-40 flex-1">
+                    <Input
+                        id="send-to"
+                        className="border-0 px-1.5 shadow-none focus-visible:ring-0"
+                        placeholder={value.length ? "继续添加收件人…" : "搜索或输入收件人邮箱…"}
+                        value={q}
+                        onChange={(e) => setQ(e.target.value)}
+                        onFocus={() => setOpen(true)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (filtered.length > 0 && query) { pick(filtered[0].address); return; }
+                                if (query.includes("@")) { add(query); setQ(""); }
+                            }
+                            if (e.key === "Backspace" && !q && value.length) {
+                                onChange(value.slice(0, -1));
+                            }
+                        }}
+                    />
+                </div>
+            </div>
+            {open && (
+                <div className="bg-popover max-h-56 overflow-y-auto rounded-md border shadow-md">
+                    {filtered.length === 0 ? (
+                        <div className="text-muted-foreground py-4 text-center text-sm">
+                            {query.includes("@") ? `回车添加 ${query}` : "没有匹配的收件人"}
+                        </div>
+                    ) : (
+                        filtered.map((o) => (
+                            <button
+                                key={o.address}
+                                type="button"
+                                className="hover:bg-muted flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
+                                onClick={() => pick(o.address)}
+                            >
+                                <span className="min-w-0 flex-1 truncate">{o.address}</span>
+                                {(o.labels || []).length > 0 && (
+                                    <span className="flex shrink-0 gap-1">
+                                        {o.labels.map((l: string) => (
+                                            <Badge key={l} variant="outline" className="text-[10px]" style={textColor(l)}>{l}</Badge>
+                                        ))}
+                                    </span>
+                                )}
+                                {o.note && <span className="text-muted-foreground max-w-32 shrink-0 truncate text-xs">{o.note}</span>}
+                            </button>
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 const SenderPage = () => {
     const [from, setFrom] = useState("");
-    const [to, setTo] = useState("");
+    const [to, setTo] = useState<string[]>([]);
     const [subject, setSubject] = useState("");
     const [html, setHtml] = useState("");
     const [justSend, setJustSend] = useState(false);
     const [senders, setSenders] = useState<string[]>([]);
+    const [recipientPool, setRecipientPool] = useState<any[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [files, setFiles] = useState<File[]>([]);
 
@@ -108,27 +211,39 @@ const SenderPage = () => {
             // server already returns newest-created first
             setSenders(list.map((b: any) => b.address));
         });
+        MailboxRouter.recipients({}, (res: any) => {
+            const result = res?.data || res;
+            setRecipientPool(result?.list || []);
+        });
     }, [])
 
     async function sendEmail() {
         if (!from) return toast({ title: "请选择发件邮箱", color: "danger" });
-        if (to.length < 2 || !to.includes("@")) return toast({ title: "请填写正确的邮箱地址", color: "danger" });
+        if (to.length === 0) return toast({ title: "请填写收件人", color: "danger" });
+        if (to.some((a) => !a.includes("@"))) return toast({ title: "请填写正确的邮箱地址", color: "danger" });
         if (!subject.length) return toast({ title: "请填写邮件标题", color: "danger" });
         if (!html.length) return toast({ title: "请填写邮件内容", color: "danger" });
         if (justSend) return toast({ title: "发送频率过高，请稍等", color: "danger" });
         setJustSend(true);
-        setTimeout(() => setJustSend(false), 5000);
+        // one message per recipient: the server paces them, so allow for the gap
+        setTimeout(() => setJustSend(false), to.length * 1100 + 3000);
         const attachments = await Promise.all(files.map(async (f) => ({
             filename: f.name,
             content: await fileToBase64(f),
         })));
         EmailRouter.send({ email: { from, to, subject, html, attachments } }, (res: any) => {
             if (res.success) {
+                const result = res.data || {};
+                const failed = result.failed || 0;
+                const label = `${result.total ?? to.length} 个收件人`;
                 toast({
-                    title: res.data?.status === "pending" ? "已存入发件历史，等待外部通道发送" : "发送成功",
-                    color: "success",
+                    title: failed === 0
+                        ? (result.status === "pending" ? `${label}已存入发件历史，等待外部通道发送` : `${label}发送成功`)
+                        : `${label}：成功 ${result.sent ?? 0}，失败 ${failed}`,
+                    description: failed > 0 ? result.errors?.join("；") : undefined,
+                    color: failed === 0 ? "success" : "warning",
                 });
-                setTo("");
+                setTo([]);
                 setSubject("");
                 setHtml("");
                 setFiles([]);
@@ -145,12 +260,7 @@ const SenderPage = () => {
                     <div className="flex flex-col gap-4 md:flex-row">
                         <div className="flex flex-1 flex-col gap-2">
                             <Label htmlFor="send-to">收件人</Label>
-                            <Input
-                                id="send-to"
-                                placeholder="请输入邮箱"
-                                value={to}
-                                onChange={(e) => setTo(e.target.value)}
-                            />
+                            <RecipientPicker value={to} options={recipientPool} onChange={setTo} />
                         </div>
                         <div className="flex flex-1 flex-col gap-2">
                             <Label htmlFor="send-subject">主题</Label>
