@@ -20,7 +20,7 @@ import {
 } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
-import { textColor } from "../../methods/text";
+import { copytext, textColor } from "../../methods/text";
 import { Plus, Inbox, Search, Clock, X, Pencil, Trash2 } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
 import MailboxGrantDialog from "./MailboxGrantDialog";
@@ -365,7 +365,16 @@ const MailboxPage = () => {
                                 pagedBoxes.map((row) => (
                                     <TableRow key={row.id}>
                                         <TableCell>
-                                            <div className="truncate" title={row.address}>{row.address}</div>
+                                            <div
+                                                className="cursor-pointer truncate hover:underline"
+                                                title={`${row.address}（点击复制）`}
+                                                onClick={() => {
+                                                    copytext(row.address);
+                                                    toast({ title: "已复制", description: row.address, color: "success" });
+                                                }}
+                                            >
+                                                {row.address}
+                                            </div>
                                             <div className="text-muted-foreground truncate text-xs">
                                                 {TYPE_LABEL[row.type] || row.type}
                                             </div>
