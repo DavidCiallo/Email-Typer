@@ -183,6 +183,22 @@ type StrategyRow struct {
 	DeleteTime     *int64 `json:"delete_time"`
 }
 
+// StrategyTemplateRow: a reusable strategy shape. The recipient is deliberately
+// absent, since it differs per strategy (and is locked for tauth sessions).
+type StrategyTemplateRow struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	FromPattern    string `json:"from_pattern"`
+	SubjectPattern string `json:"subject_pattern"`
+	Action         string `json:"action"`
+	ForwardTo      string `json:"forward_to"`
+	WebhookURL     string `json:"webhook_url"`
+	Note           string `json:"note"`
+	CreateTime     int64  `json:"create_time"`
+	UpdateTime     *int64 `json:"update_time"`
+	DeleteTime     *int64 `json:"delete_time"`
+}
+
 type SettingRow struct {
 	Key        string `json:"key"`
 	Value      string `json:"value"`
@@ -295,6 +311,16 @@ func scanStrategy(sc interface{ Scan(...any) error }) (*StrategyRow, error) {
 		&s.Action, &s.WebhookURL,
 		&s.Enabled, &s.AccountID, &s.Scope, &s.GrantID, &s.CreateTime, &s.UpdateTime, &s.DeleteTime)
 	return s, err
+}
+
+// strategyTemplateCols must match scanStrategyTemplate's field order.
+const strategyTemplateCols = `id, name, from_pattern, subject_pattern, action, forward_to, webhook_url, note, create_time, update_time, delete_time`
+
+func scanStrategyTemplate(sc interface{ Scan(...any) error }) (*StrategyTemplateRow, error) {
+	t := &StrategyTemplateRow{}
+	err := sc.Scan(&t.ID, &t.Name, &t.FromPattern, &t.SubjectPattern, &t.Action, &t.ForwardTo,
+		&t.WebhookURL, &t.Note, &t.CreateTime, &t.UpdateTime, &t.DeleteTime)
+	return t, err
 }
 
 func scanSetting(sc interface{ Scan(...any) error }) (*SettingRow, error) {

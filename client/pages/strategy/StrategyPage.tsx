@@ -3,6 +3,7 @@ import { StrategyRouter, MailboxRouter } from "../../api/instance";
 import StrategyFormModal from "./StrategyFormModal";
 import StrategyList from "./StrategyList";
 import StrategyTable from "./StrategyTable";
+import StrategyTemplates from "./StrategyTemplates";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -31,7 +32,7 @@ const StrategyPage = () => {
     const [strategyList, setStrategyList] = useState<any[]>([]);
     const [focusStrategy, setFocusStrategy] = useState<any | null>(null);
     const [isModalOpen, setModalOpen] = useState(false);
-    const [tab, setTab] = useState<"persistent" | "temp">("persistent");
+    const [tab, setTab] = useState<"persistent" | "temp" | "templates">("persistent");
     const [grants, setGrants] = useState<any[]>([]);
     const [tauthInfo, setTauthInfo] = useState<any>(null);
 
@@ -86,6 +87,12 @@ const StrategyPage = () => {
         setModalOpen(true);
     }
 
+    /** seed a new strategy from a template; the id is cleared so it creates */
+    function useTemplate(template: any) {
+        setFocusStrategy({ ...template, id: undefined, scope: tauth ? "temp" : "persistent", enabled: 1 });
+        setModalOpen(true);
+    }
+
     useEffect(() => {
         refreshList();
     }, []);
@@ -135,29 +142,35 @@ const StrategyPage = () => {
                 </div>
             )}
 
-            {!tauth && (
-                <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">
-                    {([
+            <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">
+                {(tauth
+                    ? [{ key: "temp", label: "临时策略" }, { key: "templates", label: "策略模板" }]
+                    : [
                         { key: "persistent", label: "持续策略" },
                         { key: "temp", label: "临时策略" },
-                    ] as const).map(({ key, label }) => (
-                        <button
-                            key={key}
-                            onClick={() => setTab(key)}
-                            className={cn(
-                                "inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-all",
-                                tab === key
-                                    ? "bg-background text-foreground shadow-xs"
-                                    : "hover:text-foreground",
-                            )}
-                        >
-                            {label} ({key === "persistent" ? persistent.length : temp.length})
-                        </button>
-                    ))}
-                </div>
-            )}
+                        { key: "templates", label: "策略模板" },
+                    ]
+                ).map(({ key, label }) => (
+                    <button
+                        key={key}
+                        onClick={() => setTab(key as any)}
+                        className={cn(
+                            "inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium whitespace-nowrap transition-all",
+                            tab === key
+                                ? "bg-background text-foreground shadow-xs"
+                                : "hover:text-foreground",
+                        )}
+                    >
+                        {label}
+                        {key === "persistent" && ` (${persistent.length})`}
+                        {key === "temp" && ` (${temp.length})`}
+                    </button>
+                ))}
+            </div>
 
-            {tauth ? (
+            {tab === "templates" ? (
+                <StrategyTemplates onUse={useTemplate} />
+            ) : tauth ? (
                 <div className="rounded-lg border bg-card shadow-xs">
                     <Table className="table-fixed min-w-[640px]">
                         <TableHeader>

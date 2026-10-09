@@ -32,6 +32,10 @@ func registerRoutes() {
 	apiHandlers["/api/strategy/save"] = strategySaveHandler
 	apiHandlers["/api/strategy/delete"] = strategyDeleteHandler
 
+	apiHandlers["/api/strategy-template/list"] = strategyTemplateListHandler
+	apiHandlers["/api/strategy-template/save"] = strategyTemplateSaveHandler
+	apiHandlers["/api/strategy-template/delete"] = strategyTemplateDeleteHandler
+
 	apiHandlers["/api/account/list"] = accountListHandler
 	apiHandlers["/api/account/create"] = accountCreateHandler
 	apiHandlers["/api/account/update"] = accountUpdateHandler

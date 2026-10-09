@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS strategies (
 	scope TEXT NOT NULL DEFAULT 'persistent', grant_id TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 
+CREATE TABLE IF NOT EXISTS strategytemplates (
+	id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '',
+	from_pattern TEXT NOT NULL DEFAULT '', subject_pattern TEXT NOT NULL DEFAULT '',
+	action TEXT NOT NULL DEFAULT 'send', forward_to TEXT NOT NULL DEFAULT '', webhook_url TEXT NOT NULL DEFAULT '',
+	note TEXT NOT NULL DEFAULT '',
+	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
+
 CREATE TABLE IF NOT EXISTS settings (
 	key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);

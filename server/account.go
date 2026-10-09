@@ -300,6 +300,122 @@ func strategyDeleteHandler(c *Ctx) (any, error) {
 	return map[string]any{}, nil
 }
 
+// ---------- strategy templates ----------
+//
+// Templates are shared: any signed-in user, admin or tauth holder, sees and
+// manages the same set, so a holder can apply one without asking an admin.
+
+func strategyTemplateJSON(t *StrategyTemplateRow) map[string]any {
+	var updateTime, deleteTime any
+	if t.UpdateTime != nil {
+		updateTime = *t.UpdateTime
+	}
+	if t.DeleteTime != nil {
+		deleteTime = *t.DeleteTime
+	}
+	return map[string]any{
+		"id": t.ID, "name": t.Name, "from_pattern": t.FromPattern, "subject_pattern": t.SubjectPattern,
+		"action": t.Action, "forward_to": t.ForwardTo, "webhook_url": t.WebhookURL, "note": t.Note,
+		"create_time": t.CreateTime, "update_time": updateTime, "delete_time": deleteTime,
+	}
+}
+
+func strategyTemplateFindByID(id string) *StrategyTemplateRow {
+	row := db.QueryRow(`SELECT `+strategyTemplateCols+` FROM strategytemplates WHERE id = ? AND delete_time IS NULL`, id)
+	t, err := scanStrategyTemplate(row)
+	if err != nil {
+		return nil
+	}
+	return t
+}
+
+func strategyTemplateListHandler(c *Ctx) (any, error) {
+	if _, _, err := resolveScope(c); err != nil {
+		return nil, err
+	}
+	rows, err := db.Query(`SELECT ` + strategyTemplateCols + ` FROM strategytemplates WHERE delete_time IS NULL ORDER BY create_time DESC`)
+	if err != nil {
+		return nil, throwErr("Query failed")
+	}
+	defer rows.Close()
+	list := []map[string]any{}
+	for rows.Next() {
+		if t, err := scanStrategyTemplate(rows); err == nil {
+			list = append(list, strategyTemplateJSON(t))
+		}
+	}
+	return map[string]any{"list": list}, nil
+}
+
+func strategyTemplateSaveHandler(c *Ctx) (any, error) {
+	if _, _, err := resolveScope(c); err != nil {
+		return nil, err
+	}
+	var req struct {
+		Template StrategyTemplateRow `json:"template"`
+	}
+	if err := c.Decode(&req); err != nil {
+		return nil, throwErr("Invalid request")
+	}
+	t := req.Template
+	if strings.TrimSpace(t.Name) == "" {
+		return nil, throwErr("请填写模板名称")
+	}
+	if t.Action == "" {
+		t.Action = "send"
+	}
+	if t.Action != "send" && t.Action != "webhook" {
+		return nil, throwErr("Invalid action")
+	}
+	if t.Action == "send" && strings.TrimSpace(t.ForwardTo) == "" {
+		return nil, throwErr("请填写转发邮箱")
+	}
+	if t.Action == "webhook" {
+		u, err := url.Parse(strings.TrimSpace(t.WebhookURL))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, throwErr("请填写以 http:// 或 https:// 开头的回调地址")
+		}
+	}
+	now := nowMillis()
+	if t.ID != "" {
+		res, err := db.Exec(`UPDATE strategytemplates SET name = ?, from_pattern = ?, subject_pattern = ?, action = ?,
+			forward_to = ?, webhook_url = ?, note = ?, update_time = ? WHERE id = ? AND delete_time IS NULL`,
+			t.Name, t.FromPattern, t.SubjectPattern, t.Action, t.ForwardTo, t.WebhookURL, t.Note, now, t.ID)
+		if err != nil {
+			return nil, throwErr("Save failed")
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil, throwErr("Template not found")
+		}
+		return strategyTemplateJSON(strategyTemplateFindByID(t.ID)), nil
+	}
+	id := nanoID(6)
+	if _, err := db.Exec(`INSERT INTO strategytemplates (id, name, from_pattern, subject_pattern, action, forward_to, webhook_url, note, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?)`,
+		id, t.Name, t.FromPattern, t.SubjectPattern, t.Action, t.ForwardTo, t.WebhookURL, t.Note, now); err != nil {
+		return nil, throwErr("Save failed")
+	}
+	return strategyTemplateJSON(strategyTemplateFindByID(id)), nil
+}
+
+func strategyTemplateDeleteHandler(c *Ctx) (any, error) {
+	if _, _, err := resolveScope(c); err != nil {
+		return nil, err
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	c.Decode(&req)
+	res, err := db.Exec(`UPDATE strategytemplates SET delete_time = ?, update_time = ? WHERE id = ? AND delete_time IS NULL`, nowMillis(), nowMillis(), req.ID)
+	if err != nil {
+		return nil, throwErr("Template not found")
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, throwErr("Template not found")
+	}
+	return map[string]any{}, nil
+}
+
 // ---------- settings handlers ----------
 
 func settingsListHandler(c *Ctx) (any, error) {

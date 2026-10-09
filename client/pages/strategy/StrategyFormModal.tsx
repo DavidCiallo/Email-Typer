@@ -28,14 +28,16 @@ interface Props {
 
 const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPattern }: Props) => {
     const formRef = useRef<HTMLFormElement>(null);
-    const isEdit = !!strategy;
+    // a template arrives as a seed with no id: it fills the form but creates
+    const isEdit = !!strategy?.id;
+    const seed = strategy || {};
     const [enabled, setEnabled] = useState("1");
     const [action, setAction] = useState("send");
 
     useEffect(() => {
         if (isOpen) {
-            setEnabled(isEdit ? String(strategy.enabled) : "1");
-            setAction(isEdit ? strategy.action || "send" : "send");
+            setEnabled(seed.enabled !== undefined ? String(seed.enabled) : "1");
+            setAction(seed.action || "send");
         }
     }, [isOpen]);
 
@@ -46,7 +48,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
         const formData = Object.fromEntries(new FormData(formRef.current!).entries());
 
         onSubmit({
-            id: isEdit ? strategy.id : undefined,
+            id: strategy?.id,
             name: formData.name.toString().trim(),
             from_pattern: formData.fromPattern.toString().trim() || "*",
             to_pattern: lockToPattern ?? (formData.toPattern.toString().trim() || "*"),
@@ -72,7 +74,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                             name="name"
                             required
                             placeholder="给策略起个名字"
-                            defaultValue={isEdit ? strategy.name : ""}
+                            defaultValue={seed.name || ""}
                         />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -81,7 +83,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                             id="strategy-from"
                             name="fromPattern"
                             placeholder="* 匹配所有人，支持 *@domain.com 或 user@* 等通配"
-                            defaultValue={isEdit ? strategy.from_pattern : ""}
+                            defaultValue={seed.from_pattern || ""}
                         />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -93,7 +95,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                                 id="strategy-to"
                                 name="toPattern"
                                 placeholder="* 匹配所有人"
-                                defaultValue={isEdit ? strategy.to_pattern : ""}
+                                defaultValue={seed.to_pattern || ""}
                             />
                         )}
                     </div>
@@ -103,7 +105,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                             id="strategy-subject"
                             name="subjectPattern"
                             placeholder="* 匹配所有，也可填具体关键词"
-                            defaultValue={isEdit ? strategy.subject_pattern : ""}
+                            defaultValue={seed.subject_pattern || ""}
                         />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -126,7 +128,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                                 name="forwardTo"
                                 required
                                 placeholder="匹配成功后将邮件转发到此邮箱"
-                                defaultValue={isEdit ? strategy.forward_to : localStorage.getItem("default_forward") || ""}
+                                defaultValue={seed.forward_to || localStorage.getItem("default_forward") || ""}
                             />
                         </div>
                     ) : (
@@ -138,7 +140,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                                 required
                                 type="url"
                                 placeholder="https://example.com/hook"
-                                defaultValue={isEdit ? strategy.webhook_url : ""}
+                                defaultValue={seed.webhook_url || ""}
                             />
                             <p className="text-muted-foreground text-xs">
                                 匹配成功后会向该地址发起 GET 请求，附带 from、to、subject、time、id 参数；失败重试 2 次。
