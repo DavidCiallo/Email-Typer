@@ -4,6 +4,7 @@ import StrategyFormModal from "./StrategyFormModal";
 import StrategyList from "./StrategyList";
 import StrategyTable from "./StrategyTable";
 import StrategyTemplates from "./StrategyTemplates";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -32,7 +33,8 @@ const StrategyPage = () => {
     const [strategyList, setStrategyList] = useState<any[]>([]);
     const [focusStrategy, setFocusStrategy] = useState<any | null>(null);
     const [isModalOpen, setModalOpen] = useState(false);
-    const [tab, setTab] = useState<"persistent" | "temp" | "templates">("persistent");
+    const [tab, setTab] = useState<"persistent" | "temp">("persistent");
+    const [templatesOpen, setTemplatesOpen] = useState(false);
     const [grants, setGrants] = useState<any[]>([]);
     const [tauthInfo, setTauthInfo] = useState<any>(null);
 
@@ -87,12 +89,6 @@ const StrategyPage = () => {
         setModalOpen(true);
     }
 
-    /** seed a new strategy from a template; the id is cleared so it creates */
-    function useTemplate(template: any) {
-        setFocusStrategy({ ...template, id: undefined, scope: tauth ? "temp" : "persistent", enabled: 1 });
-        setModalOpen(true);
-    }
-
     useEffect(() => {
         refreshList();
     }, []);
@@ -120,9 +116,14 @@ const StrategyPage = () => {
                             </p>
                         )}
                     </div>
-                    <Button onClick={openCreate} variant="outline">
-                        新建转发策略
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button onClick={() => setTemplatesOpen(true)} variant="ghost">
+                            查看模板
+                        </Button>
+                        <Button onClick={openCreate} variant="outline">
+                            新建转发策略
+                        </Button>
+                    </div>
                 </div>
             ) : (
                 <div className="flex items-end justify-between gap-4">
@@ -134,21 +135,34 @@ const StrategyPage = () => {
                             onChange={(e) => localStorage.setItem("default_forward", e.target.value)}
                         />
                     </div>
-                    {tab === "persistent" && (
-                        <Button onClick={openCreate} variant="outline">
-                            新建策略
+                    <div className="flex gap-2">
+                        <Button onClick={() => setTemplatesOpen(true)} variant="ghost">
+                            管理模板
                         </Button>
-                    )}
+                        {tab === "persistent" && (
+                            <Button onClick={openCreate} variant="outline">
+                                新建策略
+                            </Button>
+                        )}
+                    </div>
                 </div>
             )}
 
+            <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
+                <DialogContent className="sm:max-w-[900px]">
+                    <DialogHeader>
+                        <DialogTitle>策略模板</DialogTitle>
+                    </DialogHeader>
+                    <StrategyTemplates readOnly={tauth} />
+                </DialogContent>
+            </Dialog>
+
             <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">
                 {(tauth
-                    ? [{ key: "temp", label: "临时策略" }, { key: "templates", label: "策略模板" }]
+                    ? [{ key: "temp", label: "临时策略" }]
                     : [
                         { key: "persistent", label: "持续策略" },
                         { key: "temp", label: "临时策略" },
-                        { key: "templates", label: "策略模板" },
                     ]
                 ).map(({ key, label }) => (
                     <button
@@ -168,9 +182,7 @@ const StrategyPage = () => {
                 ))}
             </div>
 
-            {tab === "templates" ? (
-                <StrategyTemplates onUse={useTemplate} />
-            ) : tauth ? (
+            {tauth ? (
                 <div className="rounded-lg border bg-card shadow-xs">
                     <Table className="table-fixed min-w-[640px]">
                         <TableHeader>

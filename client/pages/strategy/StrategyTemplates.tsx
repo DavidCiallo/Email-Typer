@@ -28,14 +28,14 @@ import {
 import { toast } from "../../methods/notify";
 
 interface Props {
-    /** apply a template to a new strategy; the modal opens pre-filled */
-    onUse: (template: any) => void;
+    /** tauth holders read and apply templates, but cannot change the shared set */
+    readOnly?: boolean;
 }
 
 const EMPTY = { name: "", from_pattern: "*", subject_pattern: "*", action: "send", forward_to: "", webhook_url: "", note: "" };
 
 /** Shared strategy templates: admins and tauth holders see the same list. */
-const StrategyTemplates = ({ onUse }: Props) => {
+const StrategyTemplates = ({ readOnly }: Props) => {
     const [list, setList] = useState<any[]>([]);
     const [editing, setEditing] = useState<any | null>(null);
 
@@ -77,9 +77,12 @@ const StrategyTemplates = ({ onUse }: Props) => {
         <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-4">
                 <p className="text-muted-foreground text-sm">
-                    模板保存的是一套现成的匹配与动作设置，任何人都可以套用来快速新建策略。收件人不在模板里，套用后按需填写。
+                    模板保存的是一套现成的匹配与动作设置，新建策略时会在弹窗顶部显示成一排标签，点一下即可套用。收件人不在模板里，套用后按需填写。
+                    {readOnly && " 模板由管理员维护。"}
                 </p>
-                <Button variant="outline" onClick={() => setEditing({ ...EMPTY })}>新建模板</Button>
+                {!readOnly && (
+                    <Button variant="outline" onClick={() => setEditing({ ...EMPTY })}>新建模板</Button>
+                )}
             </div>
 
             <div className="rounded-lg border bg-card shadow-xs">
@@ -90,14 +93,14 @@ const StrategyTemplates = ({ onUse }: Props) => {
                             <TableHead className="w-40">发件人</TableHead>
                             <TableHead className="w-40">主题匹配</TableHead>
                             <TableHead>命中后</TableHead>
-                            <TableHead className="w-52 text-right">操作</TableHead>
+                            {!readOnly && <TableHead className="w-52 text-right">操作</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {list.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
-                                    暂无模板，点击右上角新建
+                                <TableCell colSpan={readOnly ? 4 : 5} className="text-muted-foreground h-24 text-center">
+                                    {readOnly ? "暂无模板，请联系管理员添加" : "暂无模板，点击右上角新建"}
                                 </TableCell>
                             </TableRow>
                         ) : (
@@ -115,20 +118,21 @@ const StrategyTemplates = ({ onUse }: Props) => {
                                     <TableCell className="truncate" title={row.action === "webhook" ? row.webhook_url : row.forward_to}>
                                         {row.action === "webhook" ? `调用 ${row.webhook_url}` : `转发 ${row.forward_to}`}
                                     </TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-row justify-end gap-2">
-                                            <Button size="sm" onClick={() => onUse(row)}>套用</Button>
-                                            <Button size="sm" variant="outline" onClick={() => setEditing({ ...row })}>编辑</Button>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="text-destructive hover:text-destructive"
-                                                onClick={() => remove(row)}
-                                            >
-                                                删除
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                                    {!readOnly && (
+                                        <TableCell>
+                                            <div className="flex flex-row justify-end gap-2">
+                                                <Button size="sm" variant="outline" onClick={() => setEditing({ ...row })}>编辑</Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="text-destructive hover:text-destructive"
+                                                    onClick={() => remove(row)}
+                                                >
+                                                    删除
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    )}
                                 </TableRow>
                             ))
                         )}
