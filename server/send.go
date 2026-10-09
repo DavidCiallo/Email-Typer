@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -171,7 +172,7 @@ func bareAddress(value string) string {
 
 func strategyLoadAll() []StrategyRow {
 	rows := []StrategyRow{}
-	r, err := db.Query(`SELECT id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time, update_time, delete_time FROM strategies WHERE delete_time IS NULL AND enabled = 1`)
+	r, err := db.Query(`SELECT ` + strategyCols + ` FROM strategies WHERE delete_time IS NULL AND enabled = 1`)
 	if err != nil {
 		return rows
 	}
@@ -311,7 +312,13 @@ func forwardPreamblePlain(from, to string) string {
 // strategyMatchAndForward runs on a goroutine after a clean ingest.
 func strategyMatchAndForward(email *EmailRow, body [2]string) error {
 	strategy := strategyMatch(email.From, email.To, email.Subject)
-	if strategy == nil || strategy.ForwardTo == "" {
+	if strategy == nil {
+		return nil
+	}
+	if strategy.Action == "webhook" {
+		return strategyCallWebhook(email, strategy)
+	}
+	if strategy.ForwardTo == "" {
 		return nil
 	}
 	from := resolveForwardFrom(email.From, strategy.ForwardTo)
@@ -335,4 +342,55 @@ func strategyMatchAndForward(email *EmailRow, body [2]string) error {
 	}
 	log.Printf("[Strategy] Forwarded email from %s to %s", from, strategy.ForwardTo)
 	return nil
+}
+
+// webhookTimeout and webhookRetries keep a slow or dead receiver from pinning
+// the ingest goroutine; two retries ride out a transient connection failure.
+const (
+	webhookTimeout = 5 * time.Second
+	webhookRetries = 2
+)
+
+// strategyCallWebhook GETs the strategy URL, reporting the matched mail in the
+// query string, and returns an error only once every attempt has failed.
+func strategyCallWebhook(email *EmailRow, strategy *StrategyRow) error {
+	raw := strings.TrimSpace(strategy.WebhookURL)
+	if raw == "" {
+		return nil
+	}
+	target, err := url.Parse(raw)
+	if err != nil || (target.Scheme != "http" && target.Scheme != "https") {
+		return fmt.Errorf("invalid webhook url %q", raw)
+	}
+	q := target.Query()
+	q.Set("from", email.From)
+	q.Set("to", email.To)
+	q.Set("subject", email.Subject)
+	q.Set("time", time.UnixMilli(email.Time).Format(time.RFC3339))
+	q.Set("id", email.ID)
+	target.RawQuery = q.Encode()
+
+	client := &http.Client{Timeout: webhookTimeout}
+	var lastErr error
+	for attempt := 0; attempt <= webhookRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+		req, err := http.NewRequest(http.MethodGet, target.String(), nil)
+		if err != nil {
+			return fmt.Errorf("build webhook request: %w", err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			log.Printf("[Strategy] Webhook %s returned %d for %s", target.Host, resp.StatusCode, email.Subject)
+			return nil
+		}
+		lastErr = fmt.Errorf("http %d", resp.StatusCode)
+	}
+	return fmt.Errorf("webhook %s failed: %w", target.Host, lastErr)
 }

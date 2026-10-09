@@ -25,7 +25,7 @@ const StrategyTable = (params: {
                         <TableHead className="w-44">策略名称</TableHead>
                         <TableHead>发件人</TableHead>
                         <TableHead>收件人</TableHead>
-                        <TableHead>转发邮箱</TableHead>
+                        <TableHead>命中后</TableHead>
                         <TableHead className="w-44 text-right">操作</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -55,7 +55,13 @@ const StrategyTable = (params: {
                                     <div className="truncate" title={row.to_pattern}>{row.to_pattern}</div>
                                 </TableCell>
                                 <TableCell>
-                                    <div className="truncate" title={row.forward_to}>{row.forward_to}</div>
+                                    {row.action === "webhook" ? (
+                                        <div className="truncate" title={row.webhook_url}>
+                                            <span className="text-muted-foreground">调用 </span>{row.webhook_url}
+                                        </div>
+                                    ) : (
+                                        <div className="truncate" title={row.forward_to}>{row.forward_to}</div>
+                                    )}
                                 </TableCell>
                                 <TableCell className="w-44">
                                     <div className="flex flex-row justify-end gap-2">

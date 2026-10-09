@@ -30,10 +30,12 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
     const formRef = useRef<HTMLFormElement>(null);
     const isEdit = !!strategy;
     const [enabled, setEnabled] = useState("1");
+    const [action, setAction] = useState("send");
 
     useEffect(() => {
         if (isOpen) {
             setEnabled(isEdit ? String(strategy.enabled) : "1");
+            setAction(isEdit ? strategy.action || "send" : "send");
         }
     }, [isOpen]);
 
@@ -49,7 +51,9 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
             from_pattern: formData.fromPattern.toString().trim() || "*",
             to_pattern: lockToPattern ?? (formData.toPattern.toString().trim() || "*"),
             subject_pattern: formData.subjectPattern.toString().trim() || "*",
-            forward_to: formData.forwardTo.toString().trim(),
+            action,
+            forward_to: action === "send" ? formData.forwardTo.toString().trim() : "",
+            webhook_url: action === "webhook" ? formData.webhookUrl.toString().trim() : "",
             enabled: Number(enabled),
         });
     };
@@ -103,15 +107,44 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                         />
                     </div>
                     <div className="flex flex-col gap-2">
-                        <Label htmlFor="strategy-forward">转发邮箱</Label>
-                        <Input
-                            id="strategy-forward"
-                            name="forwardTo"
-                            required
-                            placeholder="匹配成功后将邮件转发到此邮箱"
-                            defaultValue={isEdit ? strategy.forward_to : localStorage.getItem("default_forward") || ""}
-                        />
+                        <Label>命中后执行</Label>
+                        <Select value={action} onValueChange={setAction}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="send">转发邮件</SelectItem>
+                                <SelectItem value="webhook">调用 URL</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
+                    {action === "send" ? (
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="strategy-forward">转发邮箱</Label>
+                            <Input
+                                id="strategy-forward"
+                                name="forwardTo"
+                                required
+                                placeholder="匹配成功后将邮件转发到此邮箱"
+                                defaultValue={isEdit ? strategy.forward_to : localStorage.getItem("default_forward") || ""}
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="strategy-webhook">回调地址</Label>
+                            <Input
+                                id="strategy-webhook"
+                                name="webhookUrl"
+                                required
+                                type="url"
+                                placeholder="https://example.com/hook"
+                                defaultValue={isEdit ? strategy.webhook_url : ""}
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                匹配成功后会向该地址发起 GET 请求，附带 from、to、subject、time、id 参数；失败重试 2 次。
+                            </p>
+                        </div>
+                    )}
                     <div className="flex flex-col gap-2">
                         <Label>状态</Label>
                         <Select value={enabled} onValueChange={setEnabled}>

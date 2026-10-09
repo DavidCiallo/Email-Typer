@@ -41,7 +41,9 @@ CREATE INDEX IF NOT EXISTS idx_emails_deleted ON emails(delete_time);
 CREATE TABLE IF NOT EXISTS strategies (
 	id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '',
 	from_pattern TEXT NOT NULL DEFAULT '', to_pattern TEXT NOT NULL DEFAULT '', subject_pattern TEXT NOT NULL DEFAULT '',
-	forward_to TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, account_id TEXT NOT NULL DEFAULT '',
+	forward_to TEXT NOT NULL DEFAULT '', action TEXT NOT NULL DEFAULT 'send',
+	webhook_url TEXT NOT NULL DEFAULT '',
+	enabled INTEGER NOT NULL DEFAULT 1, account_id TEXT NOT NULL DEFAULT '',
 	scope TEXT NOT NULL DEFAULT 'persistent', grant_id TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 
@@ -110,6 +112,8 @@ func openDB() error {
 var migrations = []string{
 	`ALTER TABLE mailboxgrants ADD COLUMN grant_link TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE mailboxes ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'`,
+	`ALTER TABLE strategies ADD COLUMN action TEXT NOT NULL DEFAULT 'send'`,
+	`ALTER TABLE strategies ADD COLUMN webhook_url TEXT NOT NULL DEFAULT ''`,
 }
 
 func metaGet(k string) string {

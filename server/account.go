@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,8 +48,8 @@ func strategySaveRow(s StrategyRow) (*StrategyRow, error) {
 	now := nowMillis()
 	if s.ID != "" {
 		res, err := db.Exec(`UPDATE strategies SET name = ?, from_pattern = ?, to_pattern = ?, subject_pattern = ?,
-			forward_to = ?, enabled = ?, account_id = ?, scope = ?, grant_id = ?, update_time = ? WHERE id = ? AND delete_time IS NULL`,
-			s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Enabled, s.AccountID,
+			forward_to = ?, action = ?, webhook_url = ?, enabled = ?, account_id = ?, scope = ?, grant_id = ?, update_time = ? WHERE id = ? AND delete_time IS NULL`,
+			s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Action, s.WebhookURL, s.Enabled, s.AccountID,
 			s.Scope, s.GrantID, now, s.ID)
 		if err != nil {
 			return nil, throwErr("Save failed")
@@ -56,7 +57,7 @@ func strategySaveRow(s StrategyRow) (*StrategyRow, error) {
 		if n, _ := res.RowsAffected(); n == 0 {
 			return nil, throwErr("Strategy not found")
 		}
-		row := db.QueryRow(`SELECT id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time, update_time, delete_time FROM strategies WHERE id = ?`, s.ID)
+		row := db.QueryRow(`SELECT `+strategyCols+` FROM strategies WHERE id = ?`, s.ID)
 		out, err := scanStrategy(row)
 		if err != nil {
 			return nil, throwErr("Strategy not found")
@@ -68,12 +69,12 @@ func strategySaveRow(s StrategyRow) (*StrategyRow, error) {
 	if scope == "" {
 		scope = "persistent"
 	}
-	if _, err := db.Exec(`INSERT INTO strategies (id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-		id, s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Enabled, s.AccountID, scope, s.GrantID, now); err != nil {
+	if _, err := db.Exec(`INSERT INTO strategies (id, name, from_pattern, to_pattern, subject_pattern, forward_to, action, webhook_url, enabled, account_id, scope, grant_id, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Action, s.WebhookURL, s.Enabled, s.AccountID, scope, s.GrantID, now); err != nil {
 		return nil, throwErr("Save failed")
 	}
-	row := db.QueryRow(`SELECT id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time, update_time, delete_time FROM strategies WHERE id = ?`, id)
+	row := db.QueryRow(`SELECT `+strategyCols+` FROM strategies WHERE id = ?`, id)
 	out, err := scanStrategy(row)
 	if err != nil {
 		return nil, throwErr("Save failed")
@@ -86,7 +87,7 @@ func strategyListHandler(c *Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	strategies, err := db.Query(`SELECT id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time, update_time, delete_time FROM strategies WHERE delete_time IS NULL`)
+	strategies, err := db.Query(`SELECT ` + strategyCols + ` FROM strategies WHERE delete_time IS NULL`)
 	if err != nil {
 		return nil, throwErr("Query failed")
 	}
@@ -152,6 +153,7 @@ func strategyListHandler(c *Ctx) (any, error) {
 		list = append(list, map[string]any{
 			"id": s.ID, "name": s.Name, "from_pattern": s.FromPattern, "to_pattern": s.ToPattern,
 			"subject_pattern": s.SubjectPattern, "forward_to": s.ForwardTo, "enabled": s.Enabled,
+			"action": s.Action, "webhook_url": s.WebhookURL,
 			"account_id": s.AccountID, "creator_name": creator[0], "creator_email": creator[1],
 			"scope": scope, "grant_id": s.GrantID,
 			"grant_address": grantAddress, "grant_start": grantStart, "grant_end": grantEnd,
@@ -174,6 +176,21 @@ func strategySaveHandler(c *Ctx) (any, error) {
 		return nil, throwErr("Invalid request")
 	}
 	s := req.Strategy
+	if s.Action == "" {
+		s.Action = "send"
+	}
+	if s.Action != "send" && s.Action != "webhook" {
+		return nil, throwErr("Invalid action")
+	}
+	if s.Action == "send" && strings.TrimSpace(s.ForwardTo) == "" {
+		return nil, throwErr("请填写转发邮箱")
+	}
+	if s.Action == "webhook" {
+		u, err := url.Parse(strings.TrimSpace(s.WebhookURL))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, throwErr("请填写以 http:// 或 https:// 开头的回调地址")
+		}
+	}
 	if identity.tauth != nil {
 		t := identity.tauth
 		s.Scope = "temp"
@@ -233,7 +250,7 @@ func enabledProvided(c *Ctx) bool {
 }
 
 func strategyFindByID(id string) *StrategyRow {
-	row := db.QueryRow(`SELECT id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time, update_time, delete_time FROM strategies WHERE id = ? AND delete_time IS NULL`, id)
+	row := db.QueryRow(`SELECT `+strategyCols+` FROM strategies WHERE id = ? AND delete_time IS NULL`, id)
 	s, err := scanStrategy(row)
 	if err != nil {
 		return nil
@@ -252,6 +269,7 @@ func strategyJSON(s *StrategyRow) map[string]any {
 	return map[string]any{
 		"id": s.ID, "name": s.Name, "from_pattern": s.FromPattern, "to_pattern": s.ToPattern,
 		"subject_pattern": s.SubjectPattern, "forward_to": s.ForwardTo, "enabled": s.Enabled,
+		"action": s.Action, "webhook_url": s.WebhookURL,
 		"account_id": s.AccountID, "scope": s.Scope, "grant_id": s.GrantID,
 		"create_time": s.CreateTime, "update_time": updateTime, "delete_time": deleteTime,
 	}
@@ -500,7 +518,7 @@ func accountExportHandler(c *Ctx) (any, error) {
 		rows.Close()
 	}
 	strategies := []map[string]any{}
-	rows, err = db.Query(`SELECT id, name, from_pattern, to_pattern, subject_pattern, forward_to, enabled, account_id, scope, grant_id, create_time, update_time, delete_time FROM strategies`)
+	rows, err = db.Query(`SELECT ` + strategyCols + ` FROM strategies`)
 	if err == nil {
 		for rows.Next() {
 			if s, err := scanStrategy(rows); err == nil {
