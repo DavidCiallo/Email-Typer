@@ -393,6 +393,8 @@ export class MailboxGrantSaveRequest implements BaseRequest {
     /** validity in days */
     public days: number;
     public note?: string;
+    /** omitted or false = read-only grant */
+    public can_send?: boolean;
 
     constructor(origin: Partial<MailboxGrantSaveRequest>) {
         if (!origin.mailbox_id) throw new Error("mailbox_id is required");
@@ -400,6 +402,7 @@ export class MailboxGrantSaveRequest implements BaseRequest {
         this.mailbox_id = origin.mailbox_id;
         this.days = Number(origin.days) || 7;
         this.note = origin.note || "";
+        this.can_send = origin.can_send === true;
     }
     static self(unsafe: MailboxGrantSaveRequest) {
         return new MailboxGrantSaveRequest(unsafe);
@@ -453,10 +456,10 @@ export class MailboxTauthInfoRequest implements BaseRequest {
     }
 }
 
-export class MailboxTauthInfoResponse implements BaseResponse<{ address: string; start_time: number; end_time: number }> {
+export class MailboxTauthInfoResponse implements BaseResponse<{ address: string; can_send: number; start_time: number; end_time: number }> {
     public success: boolean;
     public message: string;
-    public data?: { address: string; start_time: number; end_time: number };
+    public data?: { address: string; can_send: number; start_time: number; end_time: number };
 
     constructor(origin: MailboxTauthInfoResponse) {
         this.success = origin.success;

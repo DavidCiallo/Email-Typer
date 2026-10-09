@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
 CREATE TABLE IF NOT EXISTS mailboxgrants (
 	id TEXT PRIMARY KEY, mailbox_id TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
 	token_hash TEXT NOT NULL DEFAULT '', grant_link TEXT NOT NULL DEFAULT '',
+	can_send INTEGER NOT NULL DEFAULT 0,
 	start_time INTEGER NOT NULL DEFAULT 0, end_time INTEGER NOT NULL DEFAULT 0,
 	note TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
@@ -114,6 +115,8 @@ var migrations = []string{
 	`ALTER TABLE mailboxes ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'`,
 	`ALTER TABLE strategies ADD COLUMN action TEXT NOT NULL DEFAULT 'send'`,
 	`ALTER TABLE strategies ADD COLUMN webhook_url TEXT NOT NULL DEFAULT ''`,
+	// existing grants keep sending; only new ones default to read-only
+	`ALTER TABLE mailboxgrants ADD COLUMN can_send INTEGER NOT NULL DEFAULT 1`,
 }
 
 func metaGet(k string) string {

@@ -303,8 +303,13 @@ func emailSend(c *Ctx) (any, error) {
 		return nil, throwErr("Invalid request")
 	}
 	from := req.Email.From
-	if tauth != nil && from != tauth.address {
-		return nil, throwErr("A temporary session can only send from the granted mailbox")
+	if tauth != nil {
+		if tauth.grant.CanSend != 1 {
+			return nil, throwErr("该授权不允许发信")
+		}
+		if from != tauth.address {
+			return nil, throwErr("A temporary session can only send from the granted mailbox")
+		}
 	}
 	allowedFrom := settingGet("allowed_from_domains")
 	if allowedFrom != "" {

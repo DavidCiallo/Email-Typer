@@ -223,6 +223,7 @@ type GrantRow struct {
 	Address    string `json:"address"`
 	TokenHash  string `json:"token_hash"`
 	GrantLink  string `json:"grant_link"`
+	CanSend    int    `json:"can_send"`
 	StartTime  int64  `json:"start_time"`
 	EndTime    int64  `json:"end_time"`
 	Note       string `json:"note"`
@@ -313,7 +314,7 @@ func scanMailbox(sc interface{ Scan(...any) error }) (*MailboxRow, error) {
 
 func scanGrant(sc interface{ Scan(...any) error }) (*GrantRow, error) {
 	g := &GrantRow{}
-	err := sc.Scan(&g.ID, &g.MailboxID, &g.Address, &g.TokenHash, &g.GrantLink, &g.StartTime, &g.EndTime,
+	err := sc.Scan(&g.ID, &g.MailboxID, &g.Address, &g.TokenHash, &g.GrantLink, &g.CanSend, &g.StartTime, &g.EndTime,
 		&g.Note, &g.CreateTime, &g.UpdateTime, &g.DeleteTime)
 	return g, err
 }

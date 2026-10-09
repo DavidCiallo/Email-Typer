@@ -9,6 +9,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Switch } from "../../components/ui/switch";
 import { MailboxRouter } from "../../api/instance";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
@@ -32,6 +33,7 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
     const [loading, setLoading] = useState(false);
     const [days, setDays] = useState(7);
     const [note, setNote] = useState("");
+    const [blockSend, setBlockSend] = useState(true);
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -39,6 +41,7 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
             setGrant(null);
             setDays(7);
             setNote("");
+            setBlockSend(true);
             setLoading(true);
             MailboxRouter.grantGet({ mailbox_id: mailbox.id }, (res: any) => {
                 const result = res?.data || res;
@@ -59,7 +62,7 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
     function create() {
         if (!mailbox) return;
         setBusy(true);
-        MailboxRouter.grantCreate({ mailbox_id: mailbox.id, days, note, link: `${location.origin}/tauth=` }, (res: any) => {
+        MailboxRouter.grantCreate({ mailbox_id: mailbox.id, days, note, can_send: !blockSend, link: `${location.origin}/tauth=` }, (res: any) => {
             setBusy(false);
             if (!res.success) return toast({ title: res.message || "生成失败", color: "danger" });
             const result = res?.data || res;
@@ -104,7 +107,8 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
                             </div>
                         ) : null}
                         <p className="text-muted-foreground text-xs">
-                            持有者在窗口内可查看该邮箱的收信与发件记录、以该邮箱发信、配置临时转发策略；吊销后立即失效，临时策略自动停用。
+                            持有者在窗口内可查看该邮箱的收信与发件记录、{grant.can_send === 1 ? "以该邮箱发信、" : ""}配置临时转发策略；吊销后立即失效，临时策略自动停用。
+                            {grant.can_send === 1 ? "" : " 该授权已禁止发信。"}
                         </p>
                         <DialogFooter>
                             <Button variant="outline" className="text-destructive hover:text-destructive" onClick={revoke}>
@@ -146,8 +150,17 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
                                 onChange={(e) => setNote(e.target.value)}
                             />
                         </div>
+                        <div className="flex items-center gap-2">
+                            <Switch checked={blockSend} onCheckedChange={setBlockSend} id="grant-block-send" />
+                            <Label htmlFor="grant-block-send" className="cursor-pointer">
+                                禁止发信
+                            </Label>
+                            <span className="text-muted-foreground text-xs">
+                                {blockSend ? "持有者只能看信和配置转发" : "持有者可以以该邮箱发信"}
+                            </span>
+                        </div>
                         <p className="text-muted-foreground text-xs">
-                            生成后得到一条 tauth 链接，持有者在有效期内可查看该邮箱窗口开启之后的收信与发件记录、以该邮箱发信、配置临时转发策略；窗口之前的旧邮件不可见。
+                            生成后得到一条 tauth 链接，持有者在有效期内可查看该邮箱窗口开启之后的收信与发件记录{blockSend ? "" : "、以该邮箱发信"}、配置临时转发策略；窗口之前的旧邮件不可见。
                         </p>
                         <DialogFooter>
                             <Button onClick={create} disabled={busy || days <= 0}>生成授权链接</Button>

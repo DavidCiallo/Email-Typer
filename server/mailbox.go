@@ -529,7 +529,7 @@ func mailboxProviders(c *Ctx) (any, error) {
 
 // ---------- grants (tauth) ----------
 
-const grantCols = `id, mailbox_id, address, token_hash, grant_link, start_time, end_time, note, create_time, update_time, delete_time`
+const grantCols = `id, mailbox_id, address, token_hash, grant_link, can_send, start_time, end_time, note, create_time, update_time, delete_time`
 
 func grantFindActiveByMailbox(mailboxID string) *GrantRow {
 	rows, err := db.Query(`SELECT `+grantCols+` FROM mailboxgrants WHERE mailbox_id = ? AND delete_time IS NULL`, mailboxID)
@@ -574,6 +574,7 @@ func grantJSON(g *GrantRow) map[string]any {
 	return map[string]any{
 		"id": g.ID, "mailbox_id": g.MailboxID, "address": g.Address, "token_hash": g.TokenHash,
 		"grant_link": g.GrantLink,
+		"can_send": g.CanSend,
 		"start_time": g.StartTime, "end_time": g.EndTime, "note": g.Note,
 		"create_time": g.CreateTime, "update_time": updateTime, "delete_time": deleteTime,
 	}
@@ -603,9 +604,16 @@ func mailboxGrantCreate(c *Ctx) (any, error) {
 		Days      int64  `json:"days"`
 		Note      string `json:"note"`
 		Link      string `json:"link"`
+		CanSend   *bool  `json:"can_send"`
 	}
 	if err := c.Decode(&req); err != nil {
 		return nil, throwErr("Invalid request")
+	}
+	// absent or false both mean read-only: a grant may send only when the
+	// admin explicitly asks for it
+	canSend := 0
+	if req.CanSend != nil && *req.CanSend {
+		canSend = 1
 	}
 	mailbox := mailboxFindByID(req.MailboxID)
 	if mailbox == nil {
@@ -627,9 +635,9 @@ func mailboxGrantCreate(c *Ctx) (any, error) {
 		link = "/tauth=" + token
 	}
 	id := nanoID(6)
-	if _, err := db.Exec(`INSERT INTO mailboxgrants (id, mailbox_id, address, token_hash, grant_link, start_time, end_time, note, create_time)
-		VALUES (?,?,?,?,?,?,?,?,?)`,
-		id, req.MailboxID, mailbox.Address, hashGenerate(token), link, startTime, endTime, req.Note, startTime); err != nil {
+	if _, err := db.Exec(`INSERT INTO mailboxgrants (id, mailbox_id, address, token_hash, grant_link, can_send, start_time, end_time, note, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		id, req.MailboxID, mailbox.Address, hashGenerate(token), link, canSend, startTime, endTime, req.Note, startTime); err != nil {
 		return nil, throwErr("Create failed")
 	}
 	return map[string]any{"token": token, "grant": grantJSON(grantFindByID(id))}, nil
@@ -667,6 +675,7 @@ func mailboxTauthInfo(c *Ctx) (any, error) {
 	}
 	return map[string]any{
 		"address":    session.grant.Address,
+		"can_send":   session.grant.CanSend,
 		"start_time": session.grant.StartTime,
 		"end_time":   session.grant.EndTime,
 	}, nil

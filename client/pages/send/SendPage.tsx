@@ -177,6 +177,7 @@ const SenderPage = () => {
     const [recipientPool, setRecipientPool] = useState<any[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [files, setFiles] = useState<File[]>([]);
+    const [sendBlocked, setSendBlocked] = useState(false);
 
     function addFiles(list: FileList | null) {
         if (!list) return;
@@ -201,6 +202,7 @@ const SenderPage = () => {
                     setSenders([info.address]);
                     setFrom(info.address);
                 }
+                setSendBlocked(info?.can_send !== 1);
             });
             return;
         }
@@ -218,6 +220,7 @@ const SenderPage = () => {
     }, [])
 
     async function sendEmail() {
+        if (sendBlocked) return toast({ title: "该授权不允许发信", color: "danger" });
         if (!from) return toast({ title: "请选择发件邮箱", color: "danger" });
         if (to.length === 0) return toast({ title: "请填写收件人", color: "danger" });
         if (to.some((a) => !a.includes("@"))) return toast({ title: "请填写正确的邮箱地址", color: "danger" });
@@ -316,8 +319,8 @@ const SenderPage = () => {
                 </Button>
                 <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center">
                     <SenderSelect value={from} options={senders} onChange={setFrom} />
-                    <Button onClick={sendEmail} disabled={justSend} className="md:w-32">
-                        发送邮件
+                    <Button onClick={sendEmail} disabled={justSend || sendBlocked} className="md:w-32">
+                        {sendBlocked ? "禁止发信" : "发送邮件"}
                     </Button>
                 </div>
             </div>
