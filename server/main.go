@@ -60,6 +60,7 @@ func registerRoutes() {
 	apiHandlers["/api/mailbox/providers"] = mailboxProviders
 	apiHandlers["/api/mailbox/label-save"] = mailboxLabelSave
 	apiHandlers["/api/mailbox/label-remove"] = mailboxLabelRemove
+	apiHandlers["/api/mailbox/sort-push-back"] = mailboxSortPushBack
 	apiHandlers["/api/mailbox/grant-get"] = mailboxGrantGet
 	apiHandlers["/api/mailbox/grant-create"] = mailboxGrantCreate
 	apiHandlers["/api/mailbox/grant-revoke"] = mailboxGrantRevoke

@@ -29,7 +29,7 @@ func resolveProviderPreset(key string) map[string]any {
 	return nil
 }
 
-const mailboxCols = `id, name, type, address, domain, local_part, provider, imap_host, imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_sync_time, last_uid, uidvalidity, note, labels, create_time, update_time, delete_time`
+const mailboxCols = `id, name, type, address, domain, local_part, provider, imap_host, imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_sync_time, last_uid, uidvalidity, note, labels, sort_offset, create_time, update_time, delete_time`
 
 func mailboxFindByID(id string) *MailboxRow {
 	row := db.QueryRow(`SELECT `+mailboxCols+` FROM mailboxes WHERE id = ? AND delete_time IS NULL`, id)
@@ -75,6 +75,9 @@ func adoptManagedAddress(address string) string {
 	return box.ID
 }
 
+// mailboxPushStep: how many rows one push-back click moves a mailbox down.
+const mailboxPushStep = 10
+
 func mailboxLoadAll(mailboxType string) []*MailboxRow {
 	query := `SELECT ` + mailboxCols + ` FROM mailboxes WHERE delete_time IS NULL`
 	args := []any{}
@@ -94,6 +97,44 @@ func mailboxLoadAll(mailboxType string) []*MailboxRow {
 		if m, err := scanMailbox(rows); err == nil {
 			out = append(out, m)
 		}
+	}
+	return applySortOffsets(out)
+}
+
+// applySortOffsets pushes each mailbox down by its own offset, counted in
+// positions rather than in create_time, so "往后推 10 个" means ten rows
+// regardless of how far apart the creation timestamps happen to be. A mailbox
+// never moves ahead of one that outranks it, and everything else keeps its
+// relative order.
+func applySortOffsets(rows []*MailboxRow) []*MailboxRow {
+	moved := false
+	for _, m := range rows {
+		if m.SortOffset > 0 {
+			moved = true
+			break
+		}
+	}
+	if !moved {
+		return rows
+	}
+	type entry struct {
+		row *MailboxRow
+		key int
+	}
+	entries := make([]entry, len(rows))
+	for i, m := range rows {
+		// +1 so a pushed mailbox lands strictly after the row that was offset
+		// places below it, rather than tying with it
+		offset := 0
+		if m.SortOffset > 0 {
+			offset = m.SortOffset + 1
+		}
+		entries[i] = entry{row: m, key: i + offset}
+	}
+	sort.SliceStable(entries, func(a, b int) bool { return entries[a].key < entries[b].key })
+	out := make([]*MailboxRow, len(rows))
+	for i, e := range entries {
+		out[i] = e.row
 	}
 	return out
 }
@@ -148,6 +189,7 @@ func mailboxToDTO(m *MailboxRow) map[string]any {
 		"sync_interval": m.SyncInterval, "status": orDefault(m.Status, "active"),
 		"forward_enabled": forwardEnabled, "sync_error": m.SyncError,
 		"last_sync_time": lastSync, "note": m.Note, "labels": mailboxLabels(m), "has_credential": m.Credential != "",
+		"sort_offset": m.SortOffset,
 	}
 }
 
@@ -236,6 +278,35 @@ func mailboxLabelRemove(c *Ctx) (any, error) {
 	}
 	raw, _ := json.Marshal(kept)
 	if _, err := db.Exec(`UPDATE mailboxes SET labels = ?, update_time = ? WHERE id = ?`, string(raw), nowMillis(), req.ID); err != nil {
+		return nil, throwErr("Save failed")
+	}
+	return mailboxToDTO(mailboxFindByID(req.ID)), nil
+}
+
+// mailboxSortPushBack moves a mailbox ten rows further down the list each time
+// it is called. Only the offset is stored; the resulting order is computed at
+// read time so that other mailboxes keep their relative positions.
+func mailboxSortPushBack(c *Ctx) (any, error) {
+	if err := requireAdmin(c.Auth); err != nil {
+		return nil, err
+	}
+	var req struct {
+		ID     string `json:"id"`
+		Offset int    `json:"offset"`
+	}
+	if err := c.Decode(&req); err != nil {
+		return nil, throwErr("Invalid request")
+	}
+	box := mailboxFindByID(req.ID)
+	if box == nil {
+		return nil, throwErr("Mailbox not found")
+	}
+	step := req.Offset
+	if step <= 0 {
+		step = mailboxPushStep
+	}
+	if _, err := db.Exec(`UPDATE mailboxes SET sort_offset = sort_offset + ?, update_time = ? WHERE id = ?`,
+		step, nowMillis(), req.ID); err != nil {
 		return nil, throwErr("Save failed")
 	}
 	return mailboxToDTO(mailboxFindByID(req.ID)), nil

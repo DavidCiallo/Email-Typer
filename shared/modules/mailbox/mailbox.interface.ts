@@ -268,6 +268,37 @@ export class MailboxProvidersResponse implements BaseResponse<{ presets: Provide
     }
 }
 
+// ---- sort ----
+
+export class MailboxSortPushBackRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+    /** how many rows to move down; defaults to 10 server-side */
+    public offset?: number;
+
+    constructor(origin: Partial<MailboxSortPushBackRequest>) {
+        if (!origin.id) throw new Error("id is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+        if (origin.offset) this.offset = origin.offset;
+    }
+    static self(unsafe: any) {
+        return new MailboxSortPushBackRequest(unsafe);
+    }
+}
+
+export class MailboxSortPushBackResponse implements BaseResponse<MailboxDTO> {
+    public success: boolean;
+    public message: string;
+    public data?: MailboxDTO;
+
+    constructor(origin: MailboxSortPushBackResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
 // ---- labels ----
 
 export class MailboxLabelSaveRequest implements BaseRequest {

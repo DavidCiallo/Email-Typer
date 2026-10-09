@@ -26,4 +26,5 @@ export interface MailboxEntity extends BaseEntity {
     uidvalidity: number;     // IMAP UIDVALIDITY of the remote INBOX
     note: string;
     labels: string[];        // free-form tags, e.g. ["客户", "测试"]
+    sort_offset: number;     // rows this mailbox is pushed down the list
 }

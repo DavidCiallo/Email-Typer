@@ -21,7 +21,7 @@ import {
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
 import { copytext, textColor } from "../../methods/text";
-import { Plus, Inbox, Search, Clock, X, Pencil, Trash2 } from "lucide-react";
+import { Plus, Inbox, Search, Clock, X, Pencil, Trash2, ArrowDownNarrowWide } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
 import MailboxGrantDialog from "./MailboxGrantDialog";
 
@@ -164,23 +164,26 @@ const MailboxPage = () => {
     const [derivedSearch, setDerivedSearch] = useState("");
     const [derivedPage, setDerivedPage] = useState(1);
 
-    const [domainFilter, setDomainFilter] = useState("all");
+    const [domainFilter, setDomainFilter] = useState("");
     const [managedSearch, setManagedSearch] = useState("");
     const [labelFilter, setLabelFilter] = useState("all");
     const [managedPage, setManagedPage] = useState(1);
     const domainList = useMemo(() => Array.from(new Set(boxes.map((b) => b.domain))).sort(), [boxes]);
+    // a domain is always selected; an unset or stale choice falls back to the
+    // first domain so the list is never an unfiltered dump
+    const activeDomain = domainList.includes(domainFilter) ? domainFilter : (domainList[0] ?? "");
     // address, label and note are all searchable from the one box
     const filteredBoxes = useMemo(() => {
         const q = managedSearch.trim().toLowerCase();
         return boxes.filter((b) => {
-            if (domainFilter !== "all" && b.domain !== domainFilter) return false;
+            if (b.domain !== activeDomain) return false;
             if (labelFilter !== "all" && !(b.labels || []).includes(labelFilter)) return false;
             if (!q) return true;
             return b.address.toLowerCase().includes(q)
                 || (b.note || "").toLowerCase().includes(q)
                 || (b.labels || []).some((l: string) => l.toLowerCase().includes(q));
         });
-    }, [boxes, domainFilter, labelFilter, managedSearch]);
+    }, [boxes, activeDomain, labelFilter, managedSearch]);
     const managedTotalPages = Math.max(1, Math.ceil(filteredBoxes.length / MANAGED_PAGE_SIZE));
     const pagedBoxes = filteredBoxes.slice(
         (Math.min(managedPage, managedTotalPages) - 1) * MANAGED_PAGE_SIZE,
@@ -237,6 +240,14 @@ const MailboxPage = () => {
     function submitDelete(row: any) {
         MailboxRouter.delete({ id: row.id }, () => {
             toast({ title: "删除成功", color: "primary" });
+            refreshList();
+        });
+    }
+
+    function pushBack(row: any) {
+        MailboxRouter.sortPushBack({ id: row.id }, (res: any) => {
+            if (res?.success === false) return toast({ title: res.message || "后推失败", color: "danger" });
+            toast({ title: "已后推 10 位", description: row.address, color: "primary" });
             refreshList();
         });
     }
@@ -328,18 +339,18 @@ const MailboxPage = () => {
                 </div>
                 {boxes.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
-                        {[{ domain: "all", count: boxes.length }, ...domainList.map((d) => ({ domain: d, count: boxes.filter((b) => b.domain === d).length }))].map(({ domain, count }) => (
+                        {domainList.map((domain) => (
                             <button
                                 key={domain}
                                 onClick={() => { setDomainFilter(domain); setManagedPage(1); }}
                                 className={cn(
                                     "rounded-full border px-3 py-1 text-xs transition-colors",
-                                    domainFilter === domain
+                                    activeDomain === domain
                                         ? "bg-foreground text-background border-transparent"
                                         : "text-muted-foreground hover:text-foreground",
                                 )}
                             >
-                                {domain === "all" ? `全部域名 (${count})` : `${domain} (${count})`}
+                                {domain} ({boxes.filter((b) => b.domain === domain).length})
                             </button>
                         ))}
                     </div>
@@ -408,6 +419,15 @@ const MailboxPage = () => {
                                                 </Button>
                                                 <Button size="sm" variant="outline" onClick={() => openEdit(row)} aria-label="编辑">
                                                     <Pencil className="size-3.5" />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    aria-label="后推 10 位"
+                                                    title="在列表中后推 10 位"
+                                                    onClick={() => pushBack(row)}
+                                                >
+                                                    <ArrowDownNarrowWide className="size-3.5" />
                                                 </Button>
                                                 <Button
                                                     size="sm"

@@ -14,6 +14,7 @@ import {
     MailboxLabelSaveRequest, MailboxLabelSaveResponse,
     MailboxLabelRemoveRequest, MailboxLabelRemoveResponse,
     MailboxRecipientsRequest, MailboxRecipientsResponse,
+    MailboxSortPushBackRequest, MailboxSortPushBackResponse,
 } from "./mailbox.interface";
 
 export const mailboxRoutes = {
@@ -34,4 +35,5 @@ export const mailboxRoutes = {
     grantRevoke:   { path: "/grant-revoke",   request: {} as MailboxGrantRevokeRequest,    response: {} as MailboxGrantRevokeResponse },
     grantList:     { path: "/grant-list",     request: {} as MailboxGrantListRequest,      response: {} as MailboxGrantListResponse },
     tauthInfo:     { path: "/tauth-info",     request: {} as MailboxTauthInfoRequest,      response: {} as MailboxTauthInfoResponse },
+    sortPushBack:  { path: "/sort-push-back", request: {} as MailboxSortPushBackRequest,   response: {} as MailboxSortPushBackResponse },
 } as const;

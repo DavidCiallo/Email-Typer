@@ -228,6 +228,7 @@ type MailboxRow struct {
 	UIDValidity   int    `json:"uidvalidity"`
 	Note          string `json:"note"`
 	Labels        string `json:"labels"` // JSON array of tag strings
+	SortOffset    int    `json:"sort_offset"`
 	CreateTime    int64  `json:"create_time"`
 	UpdateTime    *int64 `json:"update_time"`
 	DeleteTime    *int64 `json:"delete_time"`
@@ -333,7 +334,7 @@ func scanMailbox(sc interface{ Scan(...any) error }) (*MailboxRow, error) {
 	m := &MailboxRow{}
 	err := sc.Scan(&m.ID, &m.Name, &m.Type, &m.Address, &m.Domain, &m.LocalPart, &m.Provider,
 		&m.ImapHost, &m.ImapPort, &m.ImapTLS, &m.SyncInterval, &m.Credential, &m.Status,
-		&m.ForwardEnable, &m.SyncError, &m.LastSyncTime, &m.LastUID, &m.UIDValidity, &m.Note, &m.Labels,
+		&m.ForwardEnable, &m.SyncError, &m.LastSyncTime, &m.LastUID, &m.UIDValidity, &m.Note, &m.Labels, &m.SortOffset,
 		&m.CreateTime, &m.UpdateTime, &m.DeleteTime)
 	return m, err
 }
