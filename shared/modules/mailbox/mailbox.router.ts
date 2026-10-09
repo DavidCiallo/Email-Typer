@@ -11,6 +11,9 @@ import {
     MailboxGrantRevokeRequest, MailboxGrantRevokeResponse,
     MailboxGrantListRequest, MailboxGrantListResponse,
     MailboxTauthInfoRequest, MailboxTauthInfoResponse,
+    MailboxLabelSaveRequest, MailboxLabelSaveResponse,
+    MailboxLabelRemoveRequest, MailboxLabelRemoveResponse,
+    MailboxRecipientsRequest, MailboxRecipientsResponse,
 } from "./mailbox.interface";
 
 export const mailboxRoutes = {
@@ -23,6 +26,9 @@ export const mailboxRoutes = {
     sync:          { path: "/sync",           request: {} as MailboxSyncRequest,          response: {} as MailboxSyncResponse },
     test:          { path: "/test",           request: {} as MailboxTestRequest,          response: {} as MailboxTestResponse },
     providers:     { path: "/providers",      request: {} as MailboxProvidersRequest,     response: {} as MailboxProvidersResponse },
+    recipients:    { path: "/recipients",     request: {} as MailboxRecipientsRequest,    response: {} as MailboxRecipientsResponse },
+    labelSave:     { path: "/label-save",     request: {} as MailboxLabelSaveRequest,     response: {} as MailboxLabelSaveResponse },
+    labelRemove:   { path: "/label-remove",   request: {} as MailboxLabelRemoveRequest,   response: {} as MailboxLabelRemoveResponse },
     grantGet:      { path: "/grant-get",      request: {} as MailboxGrantGetRequest,       response: {} as MailboxGrantGetResponse },
     grantCreate:   { path: "/grant-create",   request: {} as MailboxGrantSaveRequest,      response: {} as MailboxGrantSaveResponse },
     grantRevoke:   { path: "/grant-revoke",   request: {} as MailboxGrantRevokeRequest,    response: {} as MailboxGrantRevokeResponse },

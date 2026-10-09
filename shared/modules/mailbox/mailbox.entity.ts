@@ -25,4 +25,5 @@ export interface MailboxEntity extends BaseEntity {
     last_uid: number;        // highest IMAP UID already imported
     uidvalidity: number;     // IMAP UIDVALIDITY of the remote INBOX
     note: string;
+    labels: string[];        // free-form tags, e.g. ["客户", "测试"]
 }

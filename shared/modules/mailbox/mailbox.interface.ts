@@ -6,7 +6,7 @@ export type MailboxDTO = Pick<
     MailboxEntity,
     | "id" | "name" | "type" | "address" | "domain" | "local_part"
     | "provider" | "imap_host" | "imap_port" | "imap_tls" | "sync_interval"
-    | "status" | "forward_enabled" | "sync_error" | "last_sync_time" | "note"
+    | "status" | "forward_enabled" | "sync_error" | "last_sync_time" | "note" | "labels"
 > & {
     has_credential: boolean;
 };
@@ -25,10 +25,10 @@ export class MailboxListRequest implements BaseRequest {
     }
 }
 
-export class MailboxListResponse implements BaseResponse<{ list: MailboxDTO[]; domains: string[] }> {
+export class MailboxListResponse implements BaseResponse<{ list: MailboxDTO[]; domains: string[]; labels: string[] }> {
     public success: boolean;
     public message: string;
-    public data?: { list: MailboxDTO[]; domains: string[] };
+    public data?: { list: MailboxDTO[]; domains: string[]; labels: string[] };
 
     constructor(origin: MailboxListResponse) {
         this.success = origin.success;
@@ -262,6 +262,97 @@ export class MailboxProvidersResponse implements BaseResponse<{ presets: Provide
     public data?: { presets: ProviderPresetDTO[] };
 
     constructor(origin: MailboxProvidersResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+// ---- labels ----
+
+export class MailboxLabelSaveRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+    public label: string;
+
+    constructor(origin: Partial<MailboxLabelSaveRequest>) {
+        if (!origin.id) throw new Error("id is required");
+        if (!origin.label || !origin.label.trim()) throw new Error("label is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+        this.label = origin.label.trim();
+    }
+    static self(unsafe: any) {
+        return new MailboxLabelSaveRequest(unsafe);
+    }
+}
+
+export class MailboxLabelSaveResponse implements BaseResponse<MailboxDTO> {
+    public success: boolean;
+    public message: string;
+    public data?: MailboxDTO;
+
+    constructor(origin: MailboxLabelSaveResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+export class MailboxLabelRemoveRequest implements BaseRequest {
+    public auth?: string;
+    public id: string;
+    public label: string;
+
+    constructor(origin: Partial<MailboxLabelRemoveRequest>) {
+        if (!origin.id) throw new Error("id is required");
+        if (!origin.label) throw new Error("label is required");
+        origin.auth && (this.auth = origin.auth);
+        this.id = origin.id;
+        this.label = origin.label;
+    }
+    static self(unsafe: any) {
+        return new MailboxLabelRemoveRequest(unsafe);
+    }
+}
+
+export class MailboxLabelRemoveResponse implements BaseResponse<MailboxDTO> {
+    public success: boolean;
+    public message: string;
+    public data?: MailboxDTO;
+
+    constructor(origin: MailboxLabelRemoveResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
+// Recipient pool for the send form: managed addresses plus every address that
+// has received mail, each carrying its labels and note so all three are searchable.
+export class MailboxRecipientsRequest implements BaseRequest {
+    public auth?: string;
+
+    constructor(origin: Partial<MailboxRecipientsRequest>) {
+        origin.auth && (this.auth = origin.auth);
+    }
+    static self(unsafe: any) {
+        return new MailboxRecipientsRequest(unsafe);
+    }
+}
+
+export interface RecipientDTO {
+    address: string;
+    labels: string[];
+    note: string;
+}
+
+export class MailboxRecipientsResponse implements BaseResponse<{ list: RecipientDTO[] }> {
+    public success: boolean;
+    public message: string;
+    public data?: { list: RecipientDTO[] };
+
+    constructor(origin: MailboxRecipientsResponse) {
         this.success = origin.success;
         this.message = origin.message;
         this.data = origin.data;
