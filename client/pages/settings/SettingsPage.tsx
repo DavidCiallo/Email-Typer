@@ -7,6 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
 import { TagInput, KeyValueList } from "./editors";
+import AutoTaskPanel from "./AutoTaskPanel";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
 
@@ -32,6 +33,9 @@ const SECTIONS: { title: string; keys: string[] }[] = [
 ];
 
 const ENV_ONLY_HINT = "端口、管理员账号、SECRET、DATA_DIR 仍只支持 .env 配置";
+
+// Settings tabs are data-driven, but auto tasks are their own screen.
+const AUTO_TASK_TAB = "自动任务";
 
 export default function SettingsPage() {
     const [entries, setEntries] = useState<SettingsEntry[]>([]);
@@ -158,9 +162,11 @@ export default function SettingsPage() {
         grouped.push({ title: "其他", entries: extraEntries });
     }
 
+    const tabs = [...grouped.map((s) => s.title), AUTO_TASK_TAB];
+
     // Fall back to the first visible tab until the list arrives (and after
     // an unknown key leaves the active tab empty).
-    const active = grouped.some((s) => s.title === activeTab) ? activeTab : (grouped[0]?.title || "");
+    const active = tabs.includes(activeTab) ? activeTab : (tabs[0] || "");
     const current = grouped.find((s) => s.title === active) || { title: active, entries: [] as SettingsEntry[] };
 
     return (
@@ -178,7 +184,7 @@ export default function SettingsPage() {
             ) : (
                 <>
                     <div className="bg-muted text-muted-foreground inline-flex h-9 items-center justify-center rounded-lg p-1">
-                        {grouped.map(({ title }) => (
+                        {tabs.map((title) => (
                             <button
                                 key={title}
                                 onClick={() => setActiveTab(title)}
@@ -193,29 +199,35 @@ export default function SettingsPage() {
                             </button>
                         ))}
                     </div>
-                    <Card key={current.title}>
-                        <CardHeader>
-                            <CardTitle>{current.title}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-4">
-                            {current.title === "服务器" && (
-                                <p className="text-muted-foreground text-xs">{ENV_ONLY_HINT}</p>
-                            )}
-                            {current.entries.map(e => (
-                                <div key={e.key} className="flex flex-col gap-2">
-                                    <Label htmlFor={`setting-${e.key}`}>
-                                        {FIELD_LABELS[e.key] || e.key}
-                                    </Label>
-                                    {renderEditor(e)}
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-                    <div className="flex items-center gap-4">
-                        <Button disabled={saving} onClick={handleSave}>
-                            保存设置
-                        </Button>
-                    </div>
+                    {active === AUTO_TASK_TAB ? (
+                        <AutoTaskPanel />
+                    ) : (
+                        <>
+                            <Card key={current.title}>
+                                <CardHeader>
+                                    <CardTitle>{current.title}</CardTitle>
+                                </CardHeader>
+                                <CardContent className="flex flex-col gap-4">
+                                    {current.title === "服务器" && (
+                                        <p className="text-muted-foreground text-xs">{ENV_ONLY_HINT}</p>
+                                    )}
+                                    {current.entries.map(e => (
+                                        <div key={e.key} className="flex flex-col gap-2">
+                                            <Label htmlFor={`setting-${e.key}`}>
+                                                {FIELD_LABELS[e.key] || e.key}
+                                            </Label>
+                                            {renderEditor(e)}
+                                        </div>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                            <div className="flex items-center gap-4">
+                                <Button disabled={saving} onClick={handleSave}>
+                                    保存设置
+                                </Button>
+                            </div>
+                        </>
+                    )}
                 </>
             )}
         </div>

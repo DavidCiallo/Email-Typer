@@ -97,6 +97,7 @@ func main() {
 	// the JSONL import already carries eml paths, so just warm the set
 	warmIndexedEml()
 	startEmailWatcher(maildirRoot())
+	startAutoTaskScheduler()
 
 	registerRoutes()
 
