@@ -32,13 +32,11 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
     const [loading, setLoading] = useState(false);
     const [days, setDays] = useState(7);
     const [note, setNote] = useState("");
-    const [createdLink, setCreatedLink] = useState("");
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
         if (isOpen && mailbox) {
             setGrant(null);
-            setCreatedLink("");
             setDays(7);
             setNote("");
             setLoading(true);
@@ -50,15 +48,22 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
         }
     }, [isOpen, mailbox?.id]);
 
+    /** The token is only stored hashed, so the server appends it to this prefix. */
+    function grantLink(grant: any): string {
+        const stored = String(grant?.grant_link || "");
+        if (stored.startsWith("http")) return stored;
+        if (stored.startsWith("/")) return `${location.origin}${stored}`;
+        return "";
+    }
+
     function create() {
         if (!mailbox) return;
         setBusy(true);
-        MailboxRouter.grantCreate({ mailbox_id: mailbox.id, days, note }, (res: any) => {
+        MailboxRouter.grantCreate({ mailbox_id: mailbox.id, days, note, link: `${location.origin}/tauth=` }, (res: any) => {
             setBusy(false);
             if (!res.success) return toast({ title: res.message || "生成失败", color: "danger" });
             const result = res?.data || res;
             setGrant(result.grant);
-            setCreatedLink(`${location.origin}/tauth=${result.token}`);
             toast({ title: "授权链接已生成", color: "success" });
             onChanged?.();
         });
@@ -69,7 +74,6 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
         MailboxRouter.grantRevoke({ id: grant.id }, () => {
             toast({ title: "授权已吊销", color: "primary" });
             setGrant(null);
-            setCreatedLink("");
             onChanged?.();
         });
     }
@@ -87,22 +91,18 @@ const MailboxGrantDialog = ({ isOpen, onOpenChange, mailbox, onChanged }: Props)
                         <p className="text-muted-foreground">
                             有效窗口：{fmtTime(grant.start_time)} ~ {fmtTime(grant.end_time)}
                         </p>
-                        {createdLink ? (
+                        {grantLink(grant) ? (
                             <div className="bg-muted flex items-center gap-2 rounded-md px-3 py-2">
-                                <code className="flex-1 truncate font-mono text-xs">{createdLink}</code>
+                                <code className="flex-1 truncate font-mono text-xs">{grantLink(grant)}</code>
                                 <Button
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => { copytext(createdLink); toast({ title: "链接已复制", color: "success" }); }}
+                                    onClick={() => { copytext(grantLink(grant)); toast({ title: "链接已复制", color: "success" }); }}
                                 >
                                     复制
                                 </Button>
                             </div>
-                        ) : (
-                            <p className="text-muted-foreground text-xs">
-                                授权链接仅在生成时展示一次（出于安全存储哈希），如需再次分发请吊销后重新生成。
-                            </p>
-                        )}
+                        ) : null}
                         <p className="text-muted-foreground text-xs">
                             持有者在窗口内可查看该邮箱的收信与发件记录、以该邮箱发信、配置临时转发策略；吊销后立即失效，临时策略自动停用。
                         </p>

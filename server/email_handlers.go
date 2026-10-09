@@ -43,7 +43,7 @@ type tauthSession struct {
 }
 
 func grantFindByID(id string) *GrantRow {
-	row := db.QueryRow(`SELECT id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time FROM mailboxgrants WHERE id = ?`, id)
+	row := db.QueryRow(`SELECT `+grantCols+` FROM mailboxgrants WHERE id = ?`, id)
 	g, err := scanGrant(row)
 	if err != nil {
 		return nil
@@ -61,7 +61,7 @@ func resolveTauth(token string) *tauthSession {
 	if err != nil {
 		return nil
 	}
-	row := db.QueryRow(`SELECT id, mailbox_id, address, token_hash, start_time, end_time, note, create_time, update_time, delete_time FROM mailboxgrants WHERE token_hash = ? AND delete_time IS NULL`, hash)
+	row := db.QueryRow(`SELECT `+grantCols+` FROM mailboxgrants WHERE token_hash = ? AND delete_time IS NULL`, hash)
 	g, err := scanGrant(row)
 	if err != nil {
 		return nil
@@ -99,18 +99,18 @@ func emailList(c *Ctx) (any, error) {
 		return nil, err
 	}
 	var req struct {
-		Archived   *bool  `json:"archived"`
-		AccountID  string `json:"account_id"`
-		To         string `json:"to"`
-		Q          string `json:"q"`
-		Blocked    *bool  `json:"blocked"`
-		Source     string `json:"source"`
-		MailboxID  string `json:"mailbox_id"`
-		HasCode    *bool  `json:"has_code"`
-		HasLinks   *bool  `json:"has_links"`
-		HasAttach  *bool  `json:"has_attachments"`
-		Limit      *int64 `json:"limit"`
-		Offset     int64  `json:"offset"`
+		Archived  *bool  `json:"archived"`
+		AccountID string `json:"account_id"`
+		To        string `json:"to"`
+		Q         string `json:"q"`
+		Blocked   *bool  `json:"blocked"`
+		Source    string `json:"source"`
+		MailboxID string `json:"mailbox_id"`
+		HasCode   *bool  `json:"has_code"`
+		HasLinks  *bool  `json:"has_links"`
+		HasAttach *bool  `json:"has_attachments"`
+		Limit     *int64 `json:"limit"`
+		Offset    int64  `json:"offset"`
 	}
 	c.Decode(&req)
 
