@@ -302,8 +302,19 @@ func strategyDeleteHandler(c *Ctx) (any, error) {
 
 // ---------- strategy templates ----------
 //
-// Templates are shared: any signed-in user, admin or tauth holder, sees and
-// manages the same set, so a holder can apply one without asking an admin.
+// Templates are shared: everyone signed in, admin or tauth holder, reads the
+// same set so a holder can apply one without asking. Only an admin may change
+// them — a holder deleting an entry would remove it for everybody.
+
+// strategyTemplateRequireAdmin: tauth sessions may read and apply, nothing else.
+func strategyTemplateRequireAdmin(c *Ctx) error {
+	if _, user, err := resolveScope(c); err != nil {
+		return err
+	} else if !user {
+		return throwErr("只有管理员可以管理模板")
+	}
+	return nil
+}
 
 func strategyTemplateJSON(t *StrategyTemplateRow) map[string]any {
 	var updateTime, deleteTime any
@@ -348,7 +359,7 @@ func strategyTemplateListHandler(c *Ctx) (any, error) {
 }
 
 func strategyTemplateSaveHandler(c *Ctx) (any, error) {
-	if _, _, err := resolveScope(c); err != nil {
+	if err := strategyTemplateRequireAdmin(c); err != nil {
 		return nil, err
 	}
 	var req struct {
@@ -399,7 +410,7 @@ func strategyTemplateSaveHandler(c *Ctx) (any, error) {
 }
 
 func strategyTemplateDeleteHandler(c *Ctx) (any, error) {
-	if _, _, err := resolveScope(c); err != nil {
+	if err := strategyTemplateRequireAdmin(c); err != nil {
 		return nil, err
 	}
 	var req struct {
