@@ -245,15 +245,55 @@ func archiveFilter(params map[string]any) (string, []any) {
 		}
 	}
 	if kw := strings.TrimSpace(asStr(params["keyword"])); kw != "" {
-		conds = append(conds, `(instr(lower(subject), ?) > 0 OR instr(lower(body), ?) > 0 OR instr(lower(snippet), ?) > 0)`)
-		lk := strings.ToLower(kw)
-		args = append(args, lk, lk, lk)
+		// The body is not in a column — every ingest writes html/text empty and
+		// keeps the real message in the eml archive — so a keyword that lives in
+		// the body can only be found by reading the files.
+		ids := bodyKeywordMatches(kw)
+		ors := []string{`instr(lower(subject), ?) > 0`}
+		args = append(args, strings.ToLower(kw))
+		if len(ids) > 0 {
+			ph := make([]string, len(ids))
+			for i, id := range ids {
+				ph[i] = "?"
+				args = append(args, id)
+			}
+			ors = append(ors, `id IN (`+strings.Join(ph, ",")+`)`)
+		}
+		conds = append(conds, "("+strings.Join(ors, " OR ")+")")
 	}
 	if days := asIntDefault(params["days"], 0); days > 0 {
 		conds = append(conds, `time < ?`)
 		args = append(args, nowMillis()-int64(days)*86400000)
 	}
 	return strings.Join(conds, " AND "), args
+}
+
+// bodyKeywordMatches returns the ids of non-deleted mail whose archived body
+// contains kw. It only reads files for mail whose subject did not already match,
+// so a subject-only search never touches disk.
+func bodyKeywordMatches(kw string) []string {
+	lk := strings.ToLower(kw)
+	rows, err := db.Query(`SELECT id, eml FROM emails WHERE delete_time IS NULL AND eml <> '' AND instr(lower(subject), ?) = 0`, lk)
+	if err != nil {
+		return nil
+	}
+	type pending struct{ ID, Eml string }
+	archived := []pending{}
+	for rows.Next() {
+		var p pending
+		if rows.Scan(&p.ID, &p.Eml) == nil {
+			archived = append(archived, p)
+		}
+	}
+	rows.Close()
+	ids := []string{}
+	for _, p := range archived {
+		body := readBody(&EmailRow{Eml: p.Eml})
+		if strings.Contains(strings.ToLower(body[0]), lk) || strings.Contains(strings.ToLower(body[1]), lk) {
+			ids = append(ids, p.ID)
+		}
+	}
+	return ids
 }
 
 func splitAnyList(raw string) []string {
