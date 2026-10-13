@@ -18,6 +18,7 @@ const resendAPIURL = "https://api.resend.com/emails"
 
 type sendEmailParams struct {
 	From, To, Subject, HTML string
+	Text                    string // plain-text alternative, used when HTML is empty
 	ReplyTo                 string
 	Headers                 map[string]string
 	Attachments             []map[string]string // filename/content(base64)
@@ -50,7 +51,17 @@ func sendEmail(p sendEmailParams) bool {
 		log.Printf("[Send] RESEND_API_KEY is not configured for domain in: %s", p.From)
 		return false
 	}
+	if p.HTML == "" && p.Text == "" {
+		log.Printf("[Send] refusing to send %q to %s with no body", p.Subject, p.To)
+		return false
+	}
 	payload := map[string]any{"from": p.From, "to": p.To, "subject": p.Subject, "html": p.HTML}
+	if p.HTML == "" && p.Text != "" {
+		// Resend needs one of html/text; sending plain text as html collapses
+		// every newline, which renders as an empty body
+		delete(payload, "html")
+		payload["text"] = p.Text
+	}
 	if p.ReplyTo != "" {
 		payload["reply_to"] = p.ReplyTo
 	}
@@ -326,14 +337,20 @@ func strategyMatchAndForward(email *EmailRow, body [2]string) error {
 	html := body[0]
 	text := body[1]
 	subject := "Fwd: " + email.Subject
-	bodyHTML := html
-	if html == "" {
-		bodyHTML = forwardPreamblePlain(email.From, email.To) + text
-	} else {
+	if html == "" && text == "" {
+		return fmt.Errorf("nothing to forward: %s has no body", email.ID)
+	}
+	// A mail with no HTML part keeps its plain text in the text field; putting it
+	// in HTML would lose every line break.
+	bodyHTML := ""
+	bodyText := ""
+	if html != "" {
 		bodyHTML = forwardPreambleHTML(email.From, email.To) + html
+	} else {
+		bodyText = forwardPreamblePlain(email.From, email.To) + text
 	}
 	ok := sendEmail(sendEmailParams{
-		From: from, To: strategy.ForwardTo, Subject: subject, HTML: bodyHTML,
+		From: from, To: strategy.ForwardTo, Subject: subject, HTML: bodyHTML, Text: bodyText,
 		ReplyTo: replyTo,
 		Headers: map[string]string{"X-CFRS-Forwarded": "1"},
 	})
