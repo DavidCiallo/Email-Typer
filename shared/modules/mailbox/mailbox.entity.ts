@@ -27,4 +27,5 @@ export interface MailboxEntity extends BaseEntity {
     note: string;
     labels: string[];        // free-form tags, e.g. ["客户", "测试"]
     sort_offset: number;     // rows this mailbox is pushed down the list
+    sort_order: number;      // explicit position; lower sorts first
 }

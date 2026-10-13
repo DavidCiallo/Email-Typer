@@ -21,7 +21,7 @@ import {
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
 import { copytext, textColor } from "../../methods/text";
-import { Plus, Inbox, Search, Clock, X, Pencil, Trash2, ArrowDownNarrowWide } from "lucide-react";
+import { Plus, Inbox, Search, Clock, X, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import MailboxFormModal, { ProviderPreset } from "./MailboxFormModal";
 import MailboxGrantDialog from "./MailboxGrantDialog";
 
@@ -244,10 +244,9 @@ const MailboxPage = () => {
         });
     }
 
-    function pushBack(row: any) {
-        MailboxRouter.sortPushBack({ id: row.id }, (res: any) => {
-            if (res?.success === false) return toast({ title: res.message || "后推失败", color: "danger" });
-            toast({ title: "已后推 10 位", description: row.address, color: "primary" });
+    function move(row: any, direction: "up" | "down") {
+        MailboxRouter.move({ id: row.id, direction }, (res: any) => {
+            if (res?.success === false) return toast({ title: res.message || "移动失败", color: "danger" });
             refreshList();
         });
     }
@@ -423,11 +422,22 @@ const MailboxPage = () => {
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    aria-label="后推 10 位"
-                                                    title="在列表中后推 10 位"
-                                                    onClick={() => pushBack(row)}
+                                                    aria-label="上移"
+                                                    title="上移"
+                                                    disabled={pagedBoxes[0]?.id === row.id}
+                                                    onClick={() => move(row, "up")}
                                                 >
-                                                    <ArrowDownNarrowWide className="size-3.5" />
+                                                    <ArrowUp className="size-3.5" />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    aria-label="下移"
+                                                    title="下移"
+                                                    disabled={pagedBoxes[pagedBoxes.length - 1]?.id === row.id}
+                                                    onClick={() => move(row, "down")}
+                                                >
+                                                    <ArrowDown className="size-3.5" />
                                                 </Button>
                                                 <Button
                                                     size="sm"

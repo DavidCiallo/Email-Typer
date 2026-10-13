@@ -270,29 +270,29 @@ export class MailboxProvidersResponse implements BaseResponse<{ presets: Provide
 
 // ---- sort ----
 
-export class MailboxSortPushBackRequest implements BaseRequest {
+export class MailboxMoveRequest implements BaseRequest {
     public auth?: string;
     public id: string;
-    /** how many rows to move down; defaults to 10 server-side */
-    public offset?: number;
+    public direction: "up" | "down";
 
-    constructor(origin: Partial<MailboxSortPushBackRequest>) {
+    constructor(origin: Partial<MailboxMoveRequest>) {
         if (!origin.id) throw new Error("id is required");
+        if (origin.direction !== "up" && origin.direction !== "down") throw new Error("direction must be up or down");
         origin.auth && (this.auth = origin.auth);
         this.id = origin.id;
-        if (origin.offset) this.offset = origin.offset;
+        this.direction = origin.direction;
     }
     static self(unsafe: any) {
-        return new MailboxSortPushBackRequest(unsafe);
+        return new MailboxMoveRequest(unsafe);
     }
 }
 
-export class MailboxSortPushBackResponse implements BaseResponse<MailboxDTO> {
+export class MailboxMoveResponse implements BaseResponse<MailboxDTO> {
     public success: boolean;
     public message: string;
     public data?: MailboxDTO;
 
-    constructor(origin: MailboxSortPushBackResponse) {
+    constructor(origin: MailboxMoveResponse) {
         this.success = origin.success;
         this.message = origin.message;
         this.data = origin.data;

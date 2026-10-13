@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
 	last_uid INTEGER NOT NULL DEFAULT 0, uidvalidity INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '',
 	labels TEXT NOT NULL DEFAULT '[]',
 	sort_offset INTEGER NOT NULL DEFAULT 0,
+	sort_order INTEGER NOT NULL DEFAULT 0,
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 
 CREATE TABLE IF NOT EXISTS mailboxgrants (
@@ -126,6 +127,7 @@ var migrations = []string{
 	// existing grants keep sending; only new ones default to read-only
 	`ALTER TABLE mailboxgrants ADD COLUMN can_send INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE mailboxes ADD COLUMN sort_offset INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE mailboxes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
 }
 
 func metaGet(k string) string {

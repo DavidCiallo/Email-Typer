@@ -29,7 +29,7 @@ func resolveProviderPreset(key string) map[string]any {
 	return nil
 }
 
-const mailboxCols = `id, name, type, address, domain, local_part, provider, imap_host, imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_sync_time, last_uid, uidvalidity, note, labels, sort_offset, create_time, update_time, delete_time`
+const mailboxCols = `id, name, type, address, domain, local_part, provider, imap_host, imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_sync_time, last_uid, uidvalidity, note, labels, sort_offset, sort_order, create_time, update_time, delete_time`
 
 func mailboxFindByID(id string) *MailboxRow {
 	row := db.QueryRow(`SELECT `+mailboxCols+` FROM mailboxes WHERE id = ? AND delete_time IS NULL`, id)
@@ -75,8 +75,16 @@ func adoptManagedAddress(address string) string {
 	return box.ID
 }
 
-// mailboxPushStep: how many rows one push-back click moves a mailbox down.
-const mailboxPushStep = 10
+// mailboxNewSortOrder puts a freshly created mailbox at the top of its domain:
+// one below the smallest order currently in use.
+func mailboxNewSortOrder(domain string) int {
+	var min *int
+	db.QueryRow(`SELECT MIN(sort_order) FROM mailboxes WHERE domain = ? AND delete_time IS NULL`, domain).Scan(&min)
+	if min == nil {
+		return 0
+	}
+	return *min - 1
+}
 
 func mailboxLoadAll(mailboxType string) []*MailboxRow {
 	query := `SELECT ` + mailboxCols + ` FROM mailboxes WHERE delete_time IS NULL`
@@ -85,8 +93,8 @@ func mailboxLoadAll(mailboxType string) []*MailboxRow {
 		query += ` AND type = ?`
 		args = append(args, mailboxType)
 	}
-	// newest-created first; rowid breaks ties within the same millisecond
-	query += ` ORDER BY create_time DESC, rowid DESC`
+	// explicit sort_order first, then newest-created; rowid breaks remaining ties
+	query += ` ORDER BY sort_order ASC, create_time DESC, rowid DESC`
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil
@@ -98,45 +106,80 @@ func mailboxLoadAll(mailboxType string) []*MailboxRow {
 			out = append(out, m)
 		}
 	}
-	return applySortOffsets(out)
+	return out
 }
 
-// applySortOffsets pushes each mailbox down by its own offset, counted in
-// positions rather than in create_time, so "往后推 10 个" means ten rows
-// regardless of how far apart the creation timestamps happen to be. A mailbox
-// never moves ahead of one that outranks it, and everything else keeps its
-// relative order.
-func applySortOffsets(rows []*MailboxRow) []*MailboxRow {
-	moved := false
-	for _, m := range rows {
-		if m.SortOffset > 0 {
-			moved = true
+// mailboxMove swaps a mailbox with its neighbour in the same domain. Neighbours
+// come from the ordering the UI shows, so up/down always matches what the user
+// sees; the two sort_order values are then exchanged.
+func mailboxMove(c *Ctx) (any, error) {
+	if err := requireAdmin(c.Auth); err != nil {
+		return nil, err
+	}
+	var req struct {
+		ID        string `json:"id"`
+		Direction string `json:"direction"`
+	}
+	if err := c.Decode(&req); err != nil {
+		return nil, throwErr("Invalid request")
+	}
+	if req.Direction != "up" && req.Direction != "down" {
+		return nil, throwErr("Invalid direction")
+	}
+	box := mailboxFindByID(req.ID)
+	if box == nil {
+		return nil, throwErr("Mailbox not found")
+	}
+	peers := []*MailboxRow{}
+	for _, m := range mailboxLoadAll("") {
+		if m.Domain == box.Domain {
+			peers = append(peers, m)
+		}
+	}
+	at := -1
+	for i, m := range peers {
+		if m.ID == box.ID {
+			at = i
 			break
 		}
 	}
-	if !moved {
-		return rows
+	if at == -1 {
+		return nil, throwErr("Mailbox not found")
 	}
-	type entry struct {
-		row *MailboxRow
-		key int
+	swap := at - 1
+	if req.Direction == "down" {
+		swap = at + 1
 	}
-	entries := make([]entry, len(rows))
-	for i, m := range rows {
-		// +1 so a pushed mailbox lands strictly after the row that was offset
-		// places below it, rather than tying with it
-		offset := 0
-		if m.SortOffset > 0 {
-			offset = m.SortOffset + 1
+	if swap < 0 || swap >= len(peers) {
+		return mailboxToDTO(box), nil
+	}
+	other := peers[swap]
+	// Pre-existing rows all share sort_order 0, so swapping the stored values
+	// would drop the moved row past every other tie. Renumber the domain first,
+	// once, to give each row a distinct slot.
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, throwErr("Save failed")
+	}
+	defer tx.Rollback()
+	if box.SortOrder == other.SortOrder {
+		for i, m := range peers {
+			if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, i, m.ID); err != nil {
+				return nil, throwErr("Save failed")
+			}
+			m.SortOrder = i
 		}
-		entries[i] = entry{row: m, key: i + offset}
 	}
-	sort.SliceStable(entries, func(a, b int) bool { return entries[a].key < entries[b].key })
-	out := make([]*MailboxRow, len(rows))
-	for i, e := range entries {
-		out[i] = e.row
+	if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, other.SortOrder, box.ID); err != nil {
+		return nil, throwErr("Save failed")
 	}
-	return out
+	if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, box.SortOrder, other.ID); err != nil {
+		return nil, throwErr("Save failed")
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, throwErr("Save failed")
+	}
+	return mailboxToDTO(mailboxFindByID(req.ID)), nil
 }
 
 // allowedDomains: managed domains + maildir folders that contain new/.
@@ -190,6 +233,7 @@ func mailboxToDTO(m *MailboxRow) map[string]any {
 		"forward_enabled": forwardEnabled, "sync_error": m.SyncError,
 		"last_sync_time": lastSync, "note": m.Note, "labels": mailboxLabels(m), "has_credential": m.Credential != "",
 		"sort_offset": m.SortOffset,
+		"sort_order":  m.SortOrder,
 	}
 }
 
@@ -278,35 +322,6 @@ func mailboxLabelRemove(c *Ctx) (any, error) {
 	}
 	raw, _ := json.Marshal(kept)
 	if _, err := db.Exec(`UPDATE mailboxes SET labels = ?, update_time = ? WHERE id = ?`, string(raw), nowMillis(), req.ID); err != nil {
-		return nil, throwErr("Save failed")
-	}
-	return mailboxToDTO(mailboxFindByID(req.ID)), nil
-}
-
-// mailboxSortPushBack moves a mailbox ten rows further down the list each time
-// it is called. Only the offset is stored; the resulting order is computed at
-// read time so that other mailboxes keep their relative positions.
-func mailboxSortPushBack(c *Ctx) (any, error) {
-	if err := requireAdmin(c.Auth); err != nil {
-		return nil, err
-	}
-	var req struct {
-		ID     string `json:"id"`
-		Offset int    `json:"offset"`
-	}
-	if err := c.Decode(&req); err != nil {
-		return nil, throwErr("Invalid request")
-	}
-	box := mailboxFindByID(req.ID)
-	if box == nil {
-		return nil, throwErr("Mailbox not found")
-	}
-	step := req.Offset
-	if step <= 0 {
-		step = mailboxPushStep
-	}
-	if _, err := db.Exec(`UPDATE mailboxes SET sort_offset = sort_offset + ?, update_time = ? WHERE id = ?`,
-		step, nowMillis(), req.ID); err != nil {
 		return nil, throwErr("Save failed")
 	}
 	return mailboxToDTO(mailboxFindByID(req.ID)), nil
@@ -407,11 +422,12 @@ func mailboxSave(body mailboxSaveBody, id string) (*MailboxRow, error) {
 
 	newID := nanoID(6)
 	_, err := db.Exec(`INSERT INTO mailboxes (id, name, type, address, domain, local_part, provider, imap_host,
-		imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_uid, uidvalidity, note, create_time)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'active', ?, '', 0, 0, ?, ?)`,
+		imap_port, imap_tls, sync_interval, credential, status, forward_enabled, sync_error, last_uid, uidvalidity, note, sort_order, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'active', ?, '', 0, 0, ?, ?, ?)`,
 		newID, name, body.Type, body.Address, domainLower, localPart,
 		imapProviderOrEmpty(body.Type, body.Provider), imapHost, imapPort, imapTLS, syncInterval,
-		credential, bool01(body.Type == "catchall" || body.ForwardEnable != 0), body.Note, nowMillis())
+		credential, bool01(body.Type == "catchall" || body.ForwardEnable != 0), body.Note,
+		mailboxNewSortOrder(domainLower), nowMillis())
 	if err != nil {
 		return nil, throwErr("Save failed")
 	}
