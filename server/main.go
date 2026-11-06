@@ -20,6 +20,7 @@ func registerRoutes() {
 	apiHandlers["/api/email/send"] = emailSend
 	apiHandlers["/api/email/receive"] = emailReceive
 	apiHandlers["/api/email/scan"] = emailScan
+	apiHandlers["/api/email/fetch-now"] = emailFetchNow
 	apiHandlers["/api/email/delete"] = emailDeleteHandler
 	apiHandlers["/api/email/restore"] = emailRestoreHandler
 	apiHandlers["/api/email/purge"] = emailPurgeHandler

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -876,6 +878,68 @@ func emailScan(c *Ctx) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"scanned": scanned, "imported": imported}, nil
+}
+
+// emailFetchNow asks the upstream mail bridge to poll its client. Nothing comes
+// back in this response: the bridge pushes whatever it finds to /api/email/push,
+// so the inbox picks it up on its next poll.
+func emailFetchNow(c *Ctx) (any, error) {
+	if identityFromToken(c.Auth) == "" {
+		return nil, throwErr("Unauthorized")
+	}
+	base := strings.TrimRight(strings.TrimSpace(settingGet("namail_url")), "/")
+	password := settingGet("namail_password")
+	if base == "" || password == "" {
+		return nil, throwErr("请先在设置里填写 namail 地址和密码")
+	}
+
+	loginBody, _ := json.Marshal(map[string]string{"password": password})
+	raw, err := namailPost(base+"/api/auth", "", loginBody)
+	if err != nil {
+		return nil, throwErr("连接 namail 失败：" + err.Error())
+	}
+	var auth struct {
+		Token   string `json:"token"`
+		Message string `json:"message"`
+	}
+	json.Unmarshal(raw, &auth)
+	if auth.Token == "" {
+		return nil, throwErr(orDefault(auth.Message, "namail 登录失败"))
+	}
+
+	raw, err = namailPost(base+"/api/fetch", auth.Token, []byte("{}"))
+	if err != nil {
+		return nil, throwErr("触发收信失败：" + err.Error())
+	}
+	var out struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, throwErr("namail 返回无法解析")
+	}
+	if !out.Success {
+		return nil, throwErr(orDefault(out.Message, "触发收信失败"))
+	}
+	return map[string]any{"message": out.Message}, nil
+}
+
+func namailPost(url, token string, body []byte) ([]byte, error) {
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	// the bridge answers 400 unless the request declares JSON
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
+	res, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	return io.ReadAll(res.Body)
 }
 
 func emailDeleteHandler(c *Ctx) (any, error) {

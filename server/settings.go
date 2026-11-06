@@ -21,6 +21,8 @@ var settingKeys = map[string]string{
 	"email_receive_api_key":   "EMAIL_RECEIVE_API_KEY",
 	"push_rate_limit_per_min": "PUSH_RATE_LIMIT_PER_MIN",
 	"maildir_path":            "MAILDIR_PATH",
+	"namail_url":              "NAMAIL_URL",
+	"namail_password":         "NAMAIL_PASSWORD",
 }
 
 var (

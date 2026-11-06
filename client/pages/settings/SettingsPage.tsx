@@ -23,6 +23,8 @@ const FIELD_LABELS: Record<string, string> = {
     maildir_path: "邮件存储目录（.eml）",
     mailbox_sync_interval: "邮箱同步间隔（秒）",
     attachment_max_size: "附件大小上限（字节）",
+    namail_url: "namail 地址（主动收信）",
+    namail_password: "namail 密码（主动收信）",
 };
 
 /** Display order & section grouping for known keys; unknown keys go to "其他". */
@@ -30,6 +32,7 @@ const SECTIONS: { title: string; keys: string[] }[] = [
     { title: "注册与域名", keys: ["allow_register", "allowed_domains", "client_url"] },
     { title: "邮件发送", keys: ["resend_api_key", "resend_api_keys", "allowed_from_domains"] },
     { title: "服务器", keys: ["email_receive_api_key", "push_rate_limit_per_min", "maildir_path", "mailbox_sync_interval", "attachment_max_size"] },
+    { title: "主动收信", keys: ["namail_url", "namail_password"] },
 ];
 
 const ENV_ONLY_HINT = "端口、管理员账号、SECRET、DATA_DIR 仍只支持 .env 配置";
