@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -99,6 +100,11 @@ func emailList(c *Ctx) (any, error) {
 	tauth, user, err := resolveScope(c)
 	if err != nil {
 		return nil, err
+	}
+	// the owner opening the inbox is the moment fresh mail matters; grant
+	// visitors only see one mailbox and should not drive the shared bridge
+	if user {
+		namailFetchIfDue()
 	}
 	var req struct {
 		Archived  *bool  `json:"archived"`
@@ -880,48 +886,62 @@ func emailScan(c *Ctx) (any, error) {
 	return map[string]any{"scanned": scanned, "imported": imported}, nil
 }
 
-// emailFetchNow asks the upstream mail bridge to poll its client. Nothing comes
-// back in this response: the bridge pushes whatever it finds to /api/email/push,
-// so the inbox picks it up on its next poll.
-func emailFetchNow(c *Ctx) (any, error) {
-	if identityFromToken(c.Auth) == "" {
-		return nil, throwErr("Unauthorized")
-	}
+// The inbox lists on mount, on every page change and on a 10s poll. Asking the
+// bridge each time would have it log in to every mail account six times a
+// minute, so the trigger is gated: the first list after a quiet minute is the
+// one that asks.
+const namailFetchCooldownMillis = 60 * 1000
+
+var (
+	namailMu        sync.Mutex
+	namailLastFetch int64
+)
+
+func namailFetchIfDue() {
 	base := strings.TrimRight(strings.TrimSpace(settingGet("namail_url")), "/")
 	password := settingGet("namail_password")
 	if base == "" || password == "" {
-		return nil, throwErr("请先在设置里填写 namail 地址和密码")
+		return
 	}
+	namailMu.Lock()
+	if nowMillis()-namailLastFetch < namailFetchCooldownMillis {
+		namailMu.Unlock()
+		return
+	}
+	namailLastFetch = nowMillis()
+	namailMu.Unlock()
 
-	loginBody, _ := json.Marshal(map[string]string{"password": password})
-	raw, err := namailPost(base+"/api/auth", "", loginBody)
-	if err != nil {
-		return nil, throwErr("连接 namail 失败：" + err.Error())
-	}
-	var auth struct {
-		Token   string `json:"token"`
-		Message string `json:"message"`
-	}
-	json.Unmarshal(raw, &auth)
-	if auth.Token == "" {
-		return nil, throwErr(orDefault(auth.Message, "namail 登录失败"))
-	}
-
-	raw, err = namailPost(base+"/api/fetch", auth.Token, []byte("{}"))
-	if err != nil {
-		return nil, throwErr("触发收信失败：" + err.Error())
-	}
-	var out struct {
-		Success bool   `json:"success"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, throwErr("namail 返回无法解析")
-	}
-	if !out.Success {
-		return nil, throwErr(orDefault(out.Message, "触发收信失败"))
-	}
-	return map[string]any{"message": out.Message}, nil
+	// off the request path: the bridge can take seconds, and the list is what
+	// the user is waiting on
+	go func() {
+		loginBody, _ := json.Marshal(map[string]string{"password": password})
+		raw, err := namailPost(base+"/api/auth", "", loginBody)
+		if err != nil {
+			log.Printf("[Fetch] namail auth failed: %v", err)
+			return
+		}
+		var auth struct {
+			Token   string `json:"token"`
+			Message string `json:"message"`
+		}
+		json.Unmarshal(raw, &auth)
+		if auth.Token == "" {
+			log.Printf("[Fetch] namail auth refused: %s", auth.Message)
+			return
+		}
+		raw, err = namailPost(base+"/api/fetch", auth.Token, []byte("{}"))
+		if err != nil {
+			log.Printf("[Fetch] namail fetch failed: %v", err)
+			return
+		}
+		var out struct {
+			Success bool   `json:"success"`
+			Message string `json:"message"`
+			Error   string `json:"error"` // successes carry message, failures carry error
+		}
+		json.Unmarshal(raw, &out)
+		log.Printf("[Fetch] namail: success=%v %s", out.Success, orDefault(out.Message, out.Error))
+	}()
 }
 
 func namailPost(url, token string, body []byte) ([]byte, error) {

@@ -331,17 +331,8 @@ const EmailPage = () => {
                         variant="ghost"
                         size="icon"
                         aria-label="刷新"
-                        title="刷新（同时让邮箱大师去收一次信）"
-                        onClick={() => {
-                            // the upstream pushes what it finds, so the new mail
-                            // arrives on a later poll rather than in this query
-                            EmailRouter.fetchNow({}, (res: any) => {
-                                if (res?.success === false) {
-                                    toast({ title: res.message || "触发收信失败", color: "danger" });
-                                }
-                            });
-                            queryEmails({ cache: false });
-                        }}
+                        title="刷新"
+                        onClick={() => queryEmails({ cache: false })}
                     >
                         <RotateCw className={cn("size-4", refreshing && "animate-spin")} />
                     </Button>

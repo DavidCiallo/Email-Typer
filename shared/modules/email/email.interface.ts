@@ -259,29 +259,6 @@ export class EmailScanResponse implements BaseResponse<{ scanned: number; import
     }
 }
 
-export class EmailFetchNowRequest implements BaseRequest {
-    public auth?: string;
-
-    constructor(origin: Partial<EmailFetchNowRequest>) {
-        origin.auth && (this.auth = origin.auth);
-    }
-    static self(unsafe: EmailFetchNowRequest) {
-        return new EmailFetchNowRequest(unsafe);
-    }
-}
-
-export class EmailFetchNowResponse implements BaseResponse<{ message: string }> {
-    public success: boolean;
-    public message: string;
-    public data?: { message: string };
-
-    constructor(origin: EmailFetchNowResponse) {
-        this.success = origin.success;
-        this.message = origin.message;
-        this.data = origin.data;
-    }
-}
-
 // Delete email
 export class EmailDeleteRequest implements BaseRequest {
     public auth?: string;
