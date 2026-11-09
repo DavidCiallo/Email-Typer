@@ -65,11 +65,16 @@ func decodeText(buf []byte, charset string) string {
 
 var encodedWordRe = regexp.MustCompile(`=\?([^?]+)\?([bBqQ])\?([^?]*)\?=`)
 
+// A folded or wrapped header often splits one phrase across two encoded-words;
+// the whitespace between them is a line break, not part of the text (RFC 2047).
+var adjacentEncodedWordRe = regexp.MustCompile(`(\?=)\s+(=\?)`)
+
 // decodeMimeHeader decodes RFC 2047 encoded-words like =?UTF-8?B?...?=.
 func decodeMimeHeader(value string) string {
 	if value == "" {
 		return ""
 	}
+	value = adjacentEncodedWordRe.ReplaceAllString(value, "$1$2")
 	return encodedWordRe.ReplaceAllStringFunc(value, func(m string) string {
 		parts := encodedWordRe.FindStringSubmatch(m)
 		charset, enc, data := parts[1], strings.ToUpper(parts[2]), parts[3]
@@ -122,7 +127,9 @@ func parseHeaderLines(text string) map[string]string {
 	for _, line := range strings.Split(text, "\r\n") {
 		for _, l := range strings.Split(line, "\n") {
 			if (strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t")) && currentKey != "" {
-				headers[currentKey] += " " + strings.TrimSpace(l)
+				// keys are stored lowercased when set, so a continuation must
+				// target the same key or the folded value is lost
+				headers[strings.ToLower(currentKey)] += " " + strings.TrimSpace(l)
 				continue
 			}
 			if idx := strings.Index(l, ":"); idx > 0 {
