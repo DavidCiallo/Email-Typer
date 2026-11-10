@@ -255,7 +255,9 @@ func emailDetail(c *Ctx) (any, error) {
 		ID string `json:"id"`
 	}
 	c.Decode(&req)
-	data := emailFindByID(req.ID)
+	// archived mail is still openable from the archived list, so this lookup
+	// cannot filter delete_time the way the inbox one does
+	data := emailFindByIDIncludeDeleted(req.ID)
 	if data == nil {
 		return nil, throwErr("Email not found")
 	}
