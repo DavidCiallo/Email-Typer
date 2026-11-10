@@ -153,7 +153,7 @@ func strategyListHandler(c *Ctx) (any, error) {
 		list = append(list, map[string]any{
 			"id": s.ID, "name": s.Name, "from_pattern": s.FromPattern, "to_pattern": s.ToPattern,
 			"subject_pattern": s.SubjectPattern, "forward_to": s.ForwardTo, "enabled": s.Enabled,
-			"action": s.Action, "webhook_url": s.WebhookURL,
+			"action": s.Action, "webhook_url": s.WebhookURL, "archive_after_hours": s.ArchiveAfterHours,
 			"account_id": s.AccountID, "creator_name": creator[0], "creator_email": creator[1],
 			"scope": scope, "grant_id": s.GrantID,
 			"grant_address": grantAddress, "grant_start": grantStart, "grant_end": grantEnd,

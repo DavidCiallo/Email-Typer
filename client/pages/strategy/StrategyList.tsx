@@ -35,8 +35,16 @@ const StrategyList = (params: {
                                 <span className="truncate text-sm">{row.to_pattern}</span>
                             </div>
                             <div className="flex items-center gap-1.5">
-                                <Badge variant="outline">转发邮箱</Badge>
-                                <span className="truncate text-sm">{row.forward_to}</span>
+                                <Badge variant="outline">
+                                    {row.action === "webhook" ? "回调" : row.action === "archive" ? "归档" : "转发邮箱"}
+                                </Badge>
+                                <span className="truncate text-sm">
+                                    {row.action === "webhook"
+                                        ? row.webhook_url
+                                        : row.action === "archive"
+                                            ? `${row.archive_after_hours} 小时后`
+                                            : row.forward_to}
+                                </span>
                             </div>
                             <div className="mt-1 flex items-center justify-end gap-2">
                                 <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
