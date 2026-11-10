@@ -32,6 +32,11 @@ func matchGlob(value, pattern string) bool {
 	if pattern == "*" {
 		return true
 	}
+	// A pattern with no wildcard is the keyword the form promises ("也可填具体
+	// 关键词"); anchoring it would make "One Time" miss "One Time Password".
+	if !strings.Contains(pattern, "*") {
+		return strings.Contains(strings.ToLower(value), strings.ToLower(pattern))
+	}
 	re := patternToRegex(pattern, true)
 	if re != nil {
 		return re.MatchString(value)
