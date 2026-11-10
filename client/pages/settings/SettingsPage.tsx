@@ -7,7 +7,6 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
 import { TagInput, KeyValueList } from "./editors";
-import AutoTaskPanel from "./AutoTaskPanel";
 import { cn } from "../../lib/utils";
 import { toast } from "../../methods/notify";
 
@@ -36,9 +35,6 @@ const SECTIONS: { title: string; keys: string[] }[] = [
 ];
 
 const ENV_ONLY_HINT = "端口、管理员账号、SECRET、DATA_DIR 仍只支持 .env 配置";
-
-// Settings tabs are data-driven, but auto tasks are their own screen.
-const AUTO_TASK_TAB = "自动任务";
 
 export default function SettingsPage() {
     const [entries, setEntries] = useState<SettingsEntry[]>([]);
@@ -165,7 +161,7 @@ export default function SettingsPage() {
         grouped.push({ title: "其他", entries: extraEntries });
     }
 
-    const tabs = [...grouped.map((s) => s.title), AUTO_TASK_TAB];
+    const tabs = grouped.map((s) => s.title);
 
     // Fall back to the first visible tab until the list arrives (and after
     // an unknown key leaves the active tab empty).
@@ -202,10 +198,7 @@ export default function SettingsPage() {
                             </button>
                         ))}
                     </div>
-                    {active === AUTO_TASK_TAB ? (
-                        <AutoTaskPanel />
-                    ) : (
-                        <>
+                    <>
                             <Card key={current.title}>
                                 <CardHeader>
                                     <CardTitle>{current.title}</CardTitle>
@@ -229,8 +222,7 @@ export default function SettingsPage() {
                                     保存设置
                                 </Button>
                             </div>
-                        </>
-                    )}
+                    </>
                 </>
             )}
         </div>

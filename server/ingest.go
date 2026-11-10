@@ -239,10 +239,10 @@ func nullOrNil(v any) any {
 }
 
 func finalizeIngest(stored *EmailRow, blocked bool, body [2]string) {
-	if !blocked && emailShouldForward(stored) {
+	if !blocked {
 		go func() {
-			if err := strategyMatchAndForward(stored, body); err != nil {
-				log.Printf("[EmailService] Strategy forward failed: %v", err)
+			if err := strategyApply(stored, body); err != nil {
+				log.Printf("[EmailService] Strategy apply failed: %v", err)
 			}
 		}()
 	}
@@ -384,7 +384,9 @@ func emailDelete(id string) bool {
 }
 
 func emailRestore(id string) bool {
-	res, err := db.Exec(`UPDATE emails SET delete_time = NULL, update_time = ? WHERE id = ?`, nowMillis(), id)
+	// clear archive_at too, otherwise a restored mail whose delay already passed
+	// would be archived again by the next sweep
+	res, err := db.Exec(`UPDATE emails SET delete_time = NULL, archive_at = 0, update_time = ? WHERE id = ?`, nowMillis(), id)
 	if err != nil {
 		return false
 	}
@@ -399,8 +401,16 @@ func emailPurge(id string) bool {
 		return false
 	}
 	n, _ := res.RowsAffected()
-	if row != nil && row.EID != "" {
-		os.RemoveAll(filepath.Join(dataDir, "attachments", row.EID))
+	if row != nil {
+		if row.EID != "" {
+			os.RemoveAll(filepath.Join(dataDir, "attachments", row.EID))
+		}
+		// removing only the row left the eml on disk, and the watcher re-ingested
+		// it as new mail on the next start, so "purge" was undone by a restart
+		if rel := strings.ReplaceAll(row.Eml, "\\", "/"); rel != "" && !strings.Contains(rel, "..") {
+			os.Remove(filepath.Join(maildirRoot(), filepath.FromSlash(rel)))
+			indexedEml.Delete(rel)
+		}
 	}
 	return n > 0
 }

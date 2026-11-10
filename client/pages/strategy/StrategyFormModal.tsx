@@ -39,7 +39,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
     const [applied, setApplied] = useState<any | null>(null);
     // the inputs are uncontrolled, so switching template remounts them by key
     const [seedKey, setSeedKey] = useState(0);
-    const [fields, setFields] = useState({ name: "", from_pattern: "", to_pattern: "", subject_pattern: "", forward_to: "", webhook_url: "" });
+    const [fields, setFields] = useState({ name: "", from_pattern: "", to_pattern: "", subject_pattern: "", forward_to: "", webhook_url: "", archive_after_hours: 0 });
 
     useEffect(() => {
         if (isOpen) {
@@ -54,6 +54,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                 subject_pattern: seed.subject_pattern || "",
                 forward_to: seed.forward_to || "",
                 webhook_url: seed.webhook_url || "",
+                archive_after_hours: seed.archive_after_hours || 0,
             });
         }
     }, [isOpen]);
@@ -77,6 +78,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
             subject_pattern: t.subject_pattern || "",
             forward_to: t.forward_to || "",
             webhook_url: t.webhook_url || "",
+            archive_after_hours: 0,
         });
         setSeedKey((k) => k + 1);
     }
@@ -96,6 +98,7 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
             action,
             forward_to: action === "send" ? formData.forwardTo.toString().trim() : "",
             webhook_url: action === "webhook" ? formData.webhookUrl.toString().trim() : "",
+            archive_after_hours: action === "archive" ? Number(formData.archiveAfterHours) || 0 : 0,
             enabled: Number(enabled),
         });
     };
@@ -180,10 +183,27 @@ const StrategyFormModal = ({ isOpen, onOpenChange, onSubmit, strategy, lockToPat
                             <SelectContent>
                                 <SelectItem value="send">转发邮件</SelectItem>
                                 <SelectItem value="webhook">调用 URL</SelectItem>
+                                <SelectItem value="archive">定时归档</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
-                    {action === "send" ? (
+                    {action === "archive" ? (
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="strategy-archive-hours">收信后多少小时归档</Label>
+                            <Input
+                                id="strategy-archive-hours"
+                                name="archiveAfterHours"
+                                type="number"
+                                min={1}
+                                required
+                                placeholder="6"
+                                defaultValue={fields.archive_after_hours ? String(fields.archive_after_hours) : "6"}
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                邮件到达时就按上面的发件人 / 收件人 / 主题判定，到点后归档，不会回头扫描已有邮件。
+                            </p>
+                        </div>
+                    ) : action === "send" ? (
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="strategy-forward">转发邮箱</Label>
                             <Input

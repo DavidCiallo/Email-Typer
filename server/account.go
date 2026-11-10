@@ -48,8 +48,8 @@ func strategySaveRow(s StrategyRow) (*StrategyRow, error) {
 	now := nowMillis()
 	if s.ID != "" {
 		res, err := db.Exec(`UPDATE strategies SET name = ?, from_pattern = ?, to_pattern = ?, subject_pattern = ?,
-			forward_to = ?, action = ?, webhook_url = ?, enabled = ?, account_id = ?, scope = ?, grant_id = ?, update_time = ? WHERE id = ? AND delete_time IS NULL`,
-			s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Action, s.WebhookURL, s.Enabled, s.AccountID,
+			forward_to = ?, action = ?, webhook_url = ?, archive_after_hours = ?, enabled = ?, account_id = ?, scope = ?, grant_id = ?, update_time = ? WHERE id = ? AND delete_time IS NULL`,
+			s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Action, s.WebhookURL, s.ArchiveAfterHours, s.Enabled, s.AccountID,
 			s.Scope, s.GrantID, now, s.ID)
 		if err != nil {
 			return nil, throwErr("Save failed")
@@ -69,9 +69,9 @@ func strategySaveRow(s StrategyRow) (*StrategyRow, error) {
 	if scope == "" {
 		scope = "persistent"
 	}
-	if _, err := db.Exec(`INSERT INTO strategies (id, name, from_pattern, to_pattern, subject_pattern, forward_to, action, webhook_url, enabled, account_id, scope, grant_id, create_time)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Action, s.WebhookURL, s.Enabled, s.AccountID, scope, s.GrantID, now); err != nil {
+	if _, err := db.Exec(`INSERT INTO strategies (id, name, from_pattern, to_pattern, subject_pattern, forward_to, action, webhook_url, archive_after_hours, enabled, account_id, scope, grant_id, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, s.Name, s.FromPattern, s.ToPattern, s.SubjectPattern, s.ForwardTo, s.Action, s.WebhookURL, s.ArchiveAfterHours, s.Enabled, s.AccountID, scope, s.GrantID, now); err != nil {
 		return nil, throwErr("Save failed")
 	}
 	row := db.QueryRow(`SELECT `+strategyCols+` FROM strategies WHERE id = ?`, id)
@@ -179,11 +179,14 @@ func strategySaveHandler(c *Ctx) (any, error) {
 	if s.Action == "" {
 		s.Action = "send"
 	}
-	if s.Action != "send" && s.Action != "webhook" {
+	if s.Action != "send" && s.Action != "webhook" && s.Action != "archive" {
 		return nil, throwErr("Invalid action")
 	}
 	if s.Action == "send" && strings.TrimSpace(s.ForwardTo) == "" {
 		return nil, throwErr("请填写转发邮箱")
+	}
+	if s.Action == "archive" && s.ArchiveAfterHours <= 0 {
+		return nil, throwErr("请填写归档延迟小时数（大于 0）")
 	}
 	if s.Action == "webhook" {
 		u, err := url.Parse(strings.TrimSpace(s.WebhookURL))
@@ -269,7 +272,7 @@ func strategyJSON(s *StrategyRow) map[string]any {
 	return map[string]any{
 		"id": s.ID, "name": s.Name, "from_pattern": s.FromPattern, "to_pattern": s.ToPattern,
 		"subject_pattern": s.SubjectPattern, "forward_to": s.ForwardTo, "enabled": s.Enabled,
-		"action": s.Action, "webhook_url": s.WebhookURL,
+		"action": s.Action, "webhook_url": s.WebhookURL, "archive_after_hours": s.ArchiveAfterHours,
 		"account_id": s.AccountID, "scope": s.Scope, "grant_id": s.GrantID,
 		"create_time": s.CreateTime, "update_time": updateTime, "delete_time": deleteTime,
 	}

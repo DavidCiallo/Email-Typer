@@ -59,6 +59,11 @@ const StrategyTable = (params: {
                                         <div className="truncate" title={row.webhook_url}>
                                             <span className="text-muted-foreground">调用 </span>{row.webhook_url}
                                         </div>
+                                    ) : row.action === "archive" ? (
+                                        <div className="truncate">
+                                            <span className="text-muted-foreground">归档 · </span>
+                                            {row.archive_after_hours} 小时后
+                                        </div>
                                     ) : (
                                         <div className="truncate" title={row.forward_to}>{row.forward_to}</div>
                                     )}

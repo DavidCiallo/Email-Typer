@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS emails (
 	mailbox_id TEXT NOT NULL DEFAULT '', eml TEXT NOT NULL DEFAULT '',
 	codes TEXT NOT NULL DEFAULT '[]', has_code INTEGER NOT NULL DEFAULT 0, has_links INTEGER NOT NULL DEFAULT 0,
 	attachments TEXT, blocked INTEGER NOT NULL DEFAULT 0, blocked_by TEXT NOT NULL DEFAULT '', block_rule TEXT NOT NULL DEFAULT '',
+	archive_at INTEGER NOT NULL DEFAULT 0,
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 CREATE INDEX IF NOT EXISTS idx_emails_msgid ON emails(message_id);
 CREATE INDEX IF NOT EXISTS idx_emails_fp ON emails(from_addr, to_addr, subject, time);
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS strategies (
 	from_pattern TEXT NOT NULL DEFAULT '', to_pattern TEXT NOT NULL DEFAULT '', subject_pattern TEXT NOT NULL DEFAULT '',
 	forward_to TEXT NOT NULL DEFAULT '', action TEXT NOT NULL DEFAULT 'send',
 	webhook_url TEXT NOT NULL DEFAULT '',
+	archive_after_hours INTEGER NOT NULL DEFAULT 0,
 	enabled INTEGER NOT NULL DEFAULT 1, account_id TEXT NOT NULL DEFAULT '',
 	scope TEXT NOT NULL DEFAULT 'persistent', grant_id TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
@@ -87,15 +89,6 @@ CREATE TABLE IF NOT EXISTS sendlogs (
 	subject TEXT NOT NULL DEFAULT '', html TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
 	channel TEXT NOT NULL DEFAULT 'external', error TEXT NOT NULL DEFAULT '', attachments TEXT,
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
-
-CREATE TABLE IF NOT EXISTS autotasks (
-	id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
-	kind TEXT NOT NULL DEFAULT 'daily', time_of_day TEXT NOT NULL DEFAULT '08:00',
-	weekdays TEXT NOT NULL DEFAULT '', month_day INTEGER NOT NULL DEFAULT 1,
-	time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
-	action TEXT NOT NULL DEFAULT '', params TEXT NOT NULL DEFAULT '{}',
-	last_run_at INTEGER, last_status TEXT NOT NULL DEFAULT '', last_message TEXT NOT NULL DEFAULT '',
-	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 `
 
 func openDB() error {
@@ -128,6 +121,14 @@ var migrations = []string{
 	`ALTER TABLE mailboxgrants ADD COLUMN can_send INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE mailboxes ADD COLUMN sort_offset INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE mailboxes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE strategies ADD COLUMN archive_after_hours INTEGER NOT NULL DEFAULT 0`,
+	// archive_at is when a strategy's delay elapses; 0 means "not scheduled".
+	// The index must come after the column, so both live here rather than in
+	// schema, which runs first and would fail on an older database.
+	`ALTER TABLE emails ADD COLUMN archive_at INTEGER NOT NULL DEFAULT 0`,
+	`CREATE INDEX IF NOT EXISTS idx_emails_archive_at ON emails(archive_at)`,
+	// scheduled tasks are folded into strategies; the table and its rows are gone
+	`DROP TABLE IF EXISTS autotasks`,
 }
 
 func metaGet(k string) string {

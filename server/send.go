@@ -321,9 +321,17 @@ func forwardPreamblePlain(from, to string) string {
 }
 
 // strategyMatchAndForward runs on a goroutine after a clean ingest.
-func strategyMatchAndForward(email *EmailRow, body [2]string) error {
+func strategyApply(email *EmailRow, body [2]string) error {
 	strategy := strategyMatch(email.From, email.To, email.Subject)
 	if strategy == nil {
+		return nil
+	}
+	if strategy.Action == "archive" {
+		// archiving is a decision about this mail alone, so it does not depend on
+		// the mailbox's forward switch the way send/webhook do
+		return strategyScheduleArchive(email, strategy)
+	}
+	if !emailShouldForward(email) {
 		return nil
 	}
 	if strategy.Action == "webhook" {

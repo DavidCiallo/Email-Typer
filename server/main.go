@@ -66,11 +66,6 @@ func registerRoutes() {
 	apiHandlers["/api/mailbox/grant-revoke"] = mailboxGrantRevoke
 	apiHandlers["/api/mailbox/grant-list"] = mailboxGrantList
 	apiHandlers["/api/mailbox/tauth-info"] = mailboxTauthInfo
-
-	apiHandlers["/api/autotask/list"] = autoTaskList
-	apiHandlers["/api/autotask/save"] = autoTaskSave
-	apiHandlers["/api/autotask/delete"] = autoTaskDelete
-	apiHandlers["/api/autotask/run-now"] = autoTaskRunNow
 }
 
 func main() {
@@ -102,7 +97,7 @@ func main() {
 	// the JSONL import already carries eml paths, so just warm the set
 	warmIndexedEml()
 	startEmailWatcher(maildirRoot())
-	startAutoTaskScheduler()
+	startArchiveScheduler()
 
 	registerRoutes()
 

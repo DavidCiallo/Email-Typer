@@ -313,11 +313,13 @@ export class EmailRestoreResponse implements BaseResponse<null> {
 export class EmailPurgeRequest implements BaseRequest {
     public auth?: string;
     public id: string;
+    public ids: string[];
 
     constructor(origin: Partial<EmailPurgeRequest>) {
-        if (!origin.id) throw new Error("Email id is required");
+        if (!origin.id && !origin.ids?.length) throw new Error("Email id is required");
         origin.auth && (this.auth = origin.auth);
-        this.id = origin.id;
+        this.id = origin.id || "";
+        this.ids = origin.ids || [];
     }
     static self(unsafe: EmailPurgeRequest) {
         return new EmailPurgeRequest(unsafe);

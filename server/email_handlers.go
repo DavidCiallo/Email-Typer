@@ -995,11 +995,25 @@ func emailPurgeHandler(c *Ctx) (any, error) {
 		return nil, throwErr("Unauthorized")
 	}
 	var req struct {
-		ID string `json:"id"`
+		ID  string   `json:"id"`
+		IDs []string `json:"ids"`
 	}
 	c.Decode(&req)
-	if !emailPurge(req.ID) {
+	ids := req.IDs
+	if req.ID != "" {
+		ids = append(ids, req.ID)
+	}
+	if len(ids) == 0 {
 		return nil, throwErr("Email not found")
 	}
-	return map[string]any{}, nil
+	done := 0
+	for _, id := range ids {
+		if emailPurge(id) {
+			done++
+		}
+	}
+	if done == 0 {
+		return nil, throwErr("Email not found")
+	}
+	return map[string]any{"purged": done}, nil
 }

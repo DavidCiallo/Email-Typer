@@ -6,8 +6,9 @@ export interface StrategyEntity extends BaseEntity {
     to_pattern: string;     // recipient pattern
     subject_pattern: string; // subject pattern
     forward_to: string;     // forward target email address (action = "send")
-    action: string;         // "send" (forward the mail) | "webhook" (GET the url)
+    action: string;         // "send" (forward the mail) | "webhook" (GET the url) | "archive"
     webhook_url: string;    // callback url (action = "webhook")
+    archive_after_hours: number; // hours after arrival before archiving (action = "archive")
     enabled: number;        // 1 = enabled, 0 = disabled
     account_id: string;     // owner account id
     scope?: string;         // "persistent" (default) | "temp"

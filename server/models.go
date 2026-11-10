@@ -174,7 +174,9 @@ type StrategyRow struct {
 	ForwardTo      string `json:"forward_to"`
 	Action         string `json:"action"`
 	WebhookURL     string `json:"webhook_url"`
-	Enabled        int    `json:"enabled"`
+	// action "archive": hours to wait after the mail arrived before archiving it
+	ArchiveAfterHours int   `json:"archive_after_hours"`
+	Enabled           int   `json:"enabled"`
 	AccountID      string `json:"account_id"`
 	Scope          string `json:"scope"`
 	GrantID        string `json:"grant_id"`
@@ -305,12 +307,12 @@ func scanAccount(sc interface{ Scan(...any) error }) (*AccountRow, error) {
 }
 
 // strategyCols must match scanStrategy's field order.
-const strategyCols = `id, name, from_pattern, to_pattern, subject_pattern, forward_to, action, webhook_url, enabled, account_id, scope, grant_id, create_time, update_time, delete_time`
+const strategyCols = `id, name, from_pattern, to_pattern, subject_pattern, forward_to, action, webhook_url, archive_after_hours, enabled, account_id, scope, grant_id, create_time, update_time, delete_time`
 
 func scanStrategy(sc interface{ Scan(...any) error }) (*StrategyRow, error) {
 	s := &StrategyRow{}
 	err := sc.Scan(&s.ID, &s.Name, &s.FromPattern, &s.ToPattern, &s.SubjectPattern, &s.ForwardTo,
-		&s.Action, &s.WebhookURL,
+		&s.Action, &s.WebhookURL, &s.ArchiveAfterHours,
 		&s.Enabled, &s.AccountID, &s.Scope, &s.GrantID, &s.CreateTime, &s.UpdateTime, &s.DeleteTime)
 	return s, err
 }

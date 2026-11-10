@@ -58,6 +58,9 @@ const ArchivedDialog = ({ isOpen, onOpenChange, onRestore, onOpen }: Props) => {
     const [total, setTotal] = useState(0);
     const [list, setList] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [purging, setPurging] = useState(false);
+    const [armed, setArmed] = useState(false);
     // Prefetched pages so flipping to the next page renders instantly
     const cacheRef = useRef(new Map<number, any>());
     const inflightRef = useRef(new Set<number>());
@@ -118,7 +121,46 @@ const ArchivedDialog = ({ isOpen, onOpenChange, onRestore, onOpen }: Props) => {
     function handlePurge(id: string) {
         EmailRouter.purge({ id }, () => {
             cacheRef.current.clear();
+            setSelected((prev) => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
             fetchPage(page, { cache: false });
+        });
+    }
+
+    function toggle(id: string) {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    const allOnPage = list.length > 0 && list.every((e) => selected.has(e.id));
+
+    function toggleAll() {
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (allOnPage) list.forEach((e) => next.delete(e.id));
+            else list.forEach((e) => next.add(e.id));
+            return next;
+        });
+    }
+
+    function purgeSelected() {
+        const ids = [...selected];
+        if (!ids.length) return;
+        setPurging(true);
+        EmailRouter.purge({ ids } as any, () => {
+            setPurging(false);
+            setArmed(false);
+            setSelected(new Set());
+            cacheRef.current.clear();
+            fetchPage(1, { cache: false });
+            setPage(1);
         });
     }
 
@@ -131,6 +173,29 @@ const ArchivedDialog = ({ isOpen, onOpenChange, onRestore, onOpen }: Props) => {
                     <DialogTitle>已归档邮件</DialogTitle>
                     <DialogDescription>共 {total} 封，点击行可查看内容；彻底删除不可恢复</DialogDescription>
                 </DialogHeader>
+                <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            className="size-4 accent-current"
+                            checked={allOnPage}
+                            onChange={toggleAll}
+                        />
+                        全选本页
+                    </label>
+                    <span className="text-muted-foreground text-sm">已选 {selected.size} 封</span>
+                    <Button
+                        size="sm"
+                        variant={armed ? "destructive" : "outline"}
+                        disabled={purging || selected.size === 0}
+                        title="彻底删除选中的邮件（不可恢复）"
+                        onClick={() => (armed ? purgeSelected() : setArmed(true))}
+                        onBlur={() => setArmed(false)}
+                    >
+                        <Trash2 className="size-3.5" />
+                        {armed ? `确认删除 ${selected.size} 封` : "批量彻底删除"}
+                    </Button>
+                </div>
                 <div className="max-h-[60vh] overflow-y-auto">
                     {loading ? (
                         <div className="text-muted-foreground flex items-center justify-center gap-2 py-10 text-sm">
@@ -147,6 +212,13 @@ const ArchivedDialog = ({ isOpen, onOpenChange, onRestore, onOpen }: Props) => {
                                     className="hover:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm"
                                     onClick={() => onOpen(email)}
                                 >
+                                    <input
+                                        type="checkbox"
+                                        className="size-4 shrink-0 accent-current"
+                                        checked={selected.has(email.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={() => toggle(email.id)}
+                                    />
                                     <div className="w-40 min-w-0">
                                         <div className="truncate" title={formatEmail(email.from).name}>
                                             {formatEmail(email.from).name}
