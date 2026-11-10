@@ -192,12 +192,18 @@ func ingestBufferInner(raw []byte, emlPath string) *EmailRow {
 		Blocked:     bool01(verdict.blocked), BlockedBy: verdict.blockedBy, BlockRule: verdict.rule,
 		CreateTime: now,
 	}
+	// blocked mail is archived on a timer so the interception list cannot grow
+	// without bound; stashing the deadline here avoids a second pass later
+	archiveAt := int64(0)
+	if verdict.blocked {
+		archiveAt = archiveBase(parsed.Time) + blockedArchiveDelayMillis
+	}
 	_, err := db.Exec(`INSERT INTO emails (id, eid, from_addr, to_addr, subject, html, text, time, account_id,
-		message_id, source, mailbox_id, eml, codes, has_code, has_links, attachments, blocked, blocked_by, block_rule, create_time)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		message_id, source, mailbox_id, eml, codes, has_code, has_links, attachments, blocked, blocked_by, block_rule, archive_at, create_time)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		stored.ID, stored.EID, stored.From, stored.To, stored.Subject, "", "", stored.Time, stored.AccountID,
 		stored.MessageID, stored.Source, stored.MailboxID, stored.Eml, marshalJSON(stored.Codes),
-		stored.HasCode, stored.HasLinks, nullOrNil(stored.Attachments), stored.Blocked, stored.BlockedBy, stored.BlockRule, stored.CreateTime)
+		stored.HasCode, stored.HasLinks, nullOrNil(stored.Attachments), stored.Blocked, stored.BlockedBy, stored.BlockRule, archiveAt, stored.CreateTime)
 	if err != nil {
 		log.Printf("[EmailService] insert failed: %v", err)
 		return nil

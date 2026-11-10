@@ -7,6 +7,19 @@ import (
 
 const archiveSweepInterval = time.Minute
 
+// Intercepted mail is worth a glance, not permanent shelf space, so it leaves the
+// interception list an hour after it arrived.
+const blockedArchiveDelayMillis = int64(3600 * 1000)
+
+// archiveBase is when the delay should be measured from. A missing or bogus Date
+// header must not put the deadline in the past.
+func archiveBase(t int64) int64 {
+	if t <= 0 {
+		return nowMillis()
+	}
+	return t
+}
+
 // strategyScheduleArchive records when a mail should be archived. The match has
 // already happened at ingest, so the delay costs one column write and the sweep
 // below never has to look at a message or its eml.
@@ -15,10 +28,7 @@ func strategyScheduleArchive(email *EmailRow, s *StrategyRow) error {
 	if hours <= 0 {
 		return nil
 	}
-	base := email.Time
-	if base <= 0 {
-		base = nowMillis()
-	}
+	base := archiveBase(email.Time)
 	_, err := db.Exec(`UPDATE emails SET archive_at = ?, update_time = ? WHERE id = ?`,
 		base+int64(hours)*3600*1000, nowMillis(), email.ID)
 	return err
