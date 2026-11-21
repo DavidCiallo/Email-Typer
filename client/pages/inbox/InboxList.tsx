@@ -4,6 +4,7 @@ import { toast } from "../../methods/notify";
 import { Card, CardContent } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Paperclip } from "lucide-react";
+import ForwardBadge from "./ForwardBadge";
 
 const InboxList = (params: {
     emailList: Array<any>,
@@ -72,6 +73,7 @@ const InboxList = (params: {
                                         拦截·{blockLabel(email.blocked_by)}
                                     </Badge>
                                 )}
+                                <ForwardBadge email={email} />
                                 <span className="truncate text-sm">{email.subject?.slice(0, 32)}</span>
                                 {!!email.has_attachments && (
                                     <Paperclip className="text-muted-foreground size-3.5 shrink-0" aria-label="含附件" />

@@ -11,6 +11,7 @@ import {
     EmailAttachmentRequest, EmailAttachmentResponse,
     SendLogListRequest, SendLogListResponse,
     SendLogUpdateRequest, SendLogUpdateResponse,
+    EmailForwardAgainRequest, EmailForwardAgainResponse,
 } from "./email.interface";
 
 export const emailRoutes = {
@@ -28,4 +29,5 @@ export const emailRoutes = {
     sendLogList:   { path: "/send-log/list",   request: {} as SendLogListRequest,   response: {} as SendLogListResponse },
     sendLogUpdate: { path: "/send-log/update", request: {} as SendLogUpdateRequest, response: {} as SendLogUpdateResponse },
     attachment: { path: "/attachment", request: {} as EmailAttachmentRequest, response: {} as EmailAttachmentResponse },
+    forwardAgain: { path: "/forward-again", request: {} as EmailForwardAgainRequest, response: {} as EmailForwardAgainResponse },
 } as const;

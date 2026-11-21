@@ -12,16 +12,21 @@ import { EmailRouter } from "../../api/instance";
 import { cn } from "../../lib/utils";
 import { copytext } from "../../methods/text";
 import { toast } from "../../methods/notify";
+import ReForwardPanel from "./ReForwardPanel";
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
     pending: { label: "待发送", className: "bg-amber-100 text-amber-700 border-transparent" },
     sent: { label: "已发送", className: "bg-emerald-100 text-emerald-700 border-transparent" },
     failed: { label: "失败", className: "bg-red-100 text-red-700 border-transparent" },
+    // 策略转发新增的两种结果：部分附件未送达 / 命中策略但未执行
+    partial: { label: "部分送达", className: "bg-amber-100 text-amber-700 border-transparent" },
+    skipped: { label: "已跳过", className: "bg-slate-100 text-slate-600 border-transparent" },
 };
 
 const CHANNEL_LABEL: Record<string, string> = {
     resend: "Resend",
     external: "外部通道",
+    forward: "策略转发",
 };
 
 function fmtTime(ts: number): string {
@@ -131,6 +136,10 @@ const SendHistoryDialog = ({ isOpen, onOpenChange }: Props) => {
                                 标记已完成（外部通道已发送）
                             </Button>
                         )}
+                        {/* 转发没完全送达时，给出「挑附件补发」的入口 */}
+                        {detail.channel === "forward" && detail.email_id && detail.status !== "sent" && (
+                            <ReForwardPanel sendLogId={detail.id} emailId={detail.email_id} onDone={refresh} />
+                        )}
                     </div>
                 ) : (
                     <div className="flex flex-col gap-3">
@@ -161,8 +170,15 @@ const SendHistoryDialog = ({ isOpen, onOpenChange }: Props) => {
                                                     {item.to}
                                                     <span className="text-muted-foreground"> · {item.subject}</span>
                                                 </div>
-                                                {item.status === "failed" && item.error && (
-                                                    <div className="text-destructive text-xs">{item.error}</div>
+                                                {item.error && (
+                                                    <div
+                                                        className={cn(
+                                                            "text-xs",
+                                                            item.status === "failed" ? "text-destructive" : "text-muted-foreground",
+                                                        )}
+                                                    >
+                                                        {item.error}
+                                                    </div>
                                                 )}
                                             </div>
                                             <span className="text-muted-foreground w-32 shrink-0 text-xs tabular-nums">

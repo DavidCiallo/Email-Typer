@@ -184,6 +184,12 @@ const MailboxPage = () => {
                 || (b.labels || []).some((l: string) => l.toLowerCase().includes(q));
         });
     }, [boxes, activeDomain, labelFilter, managedSearch]);
+    // 全量有序列表（同域、不含搜索/标签筛选），与后端 mailboxMove 的交换范围一致。
+    // 上下键的边界必须以它为基准，用分页切片判断会导致排序只能在一页内生效。
+    const orderedBoxes = useMemo(
+        () => boxes.filter((b) => b.domain === activeDomain),
+        [boxes, activeDomain],
+    );
     const managedTotalPages = Math.max(1, Math.ceil(filteredBoxes.length / MANAGED_PAGE_SIZE));
     const pagedBoxes = filteredBoxes.slice(
         (Math.min(managedPage, managedTotalPages) - 1) * MANAGED_PAGE_SIZE,
@@ -198,6 +204,8 @@ const MailboxPage = () => {
     const pagedDerived = filteredDerived.slice((Math.min(derivedPage, derivedTotalPages) - 1) * DERIVED_PAGE_SIZE, Math.min(derivedPage, derivedTotalPages) * DERIVED_PAGE_SIZE);
 
     const [isFormOpen, setFormOpen] = useState(false);
+    // 排序请求进行中时禁用所有上下键：连点会让两次移动交错，最终顺序随机
+    const [moving, setMoving] = useState(false);
     const [editing, setEditing] = useState<any | null>(null);
     const [grantBox, setGrantBox] = useState<any | null>(null);
     const [adopting, setAdopting] = useState<string | null>(null);
@@ -244,8 +252,33 @@ const MailboxPage = () => {
         });
     }
 
+    // ===== 原实现（改造前，保留备查 2026-11-17）=====
+    // 后端只支持相邻交换，前端只能传方向；筛选状态下算出的「相邻行」并不是
+    // 真实相邻行，所以看起来像没反应。
+    // function move(row: any, direction: "up" | "down") {
+    //     MailboxRouter.move({ id: row.id, direction }, (res: any) => {
+    //         if (res?.success === false) return toast({ title: res.message || "移动失败", color: "danger" });
+    //         refreshList();
+    //     });
+    // }
+    // ===== 改造后 =====
+    // 改成「移动到谁之前」：位置由前端用同域全量列表算，后端整体重排。
     function move(row: any, direction: "up" | "down") {
-        MailboxRouter.move({ id: row.id, direction }, (res: any) => {
+        if (moving) return;
+        const idx = orderedBoxes.findIndex((b) => b.id === row.id);
+        if (idx < 0) return;
+        let beforeId = "";
+        if (direction === "up") {
+            if (idx <= 0) return;
+            beforeId = orderedBoxes[idx - 1].id;
+        } else {
+            if (idx >= orderedBoxes.length - 1) return;
+            // 下移 = 插到「原后一位的后面」；没有下下一位就落到末尾
+            beforeId = orderedBoxes[idx + 2]?.id || "";
+        }
+        setMoving(true);
+        MailboxRouter.move({ id: row.id, before_id: beforeId }, (res: any) => {
+            setMoving(false);
             if (res?.success === false) return toast({ title: res.message || "移动失败", color: "danger" });
             refreshList();
         });
@@ -385,8 +418,24 @@ const MailboxPage = () => {
                                             >
                                                 {row.address}
                                             </div>
-                                            <div className="text-muted-foreground truncate text-xs">
-                                                {TYPE_LABEL[row.type] || row.type}
+                                            <div className="text-muted-foreground flex items-center gap-1.5 truncate text-xs">
+                                                <span className="truncate">{TYPE_LABEL[row.type] || row.type}</span>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={cn(
+                                                        "shrink-0 px-1 py-0 text-[10px] leading-4",
+                                                        row.forward_enabled === 1
+                                                            ? "border-emerald-300 text-emerald-600"
+                                                            : "text-muted-foreground",
+                                                    )}
+                                                    title={
+                                                        row.forward_enabled === 1
+                                                            ? "命中的转发/回调策略会执行"
+                                                            : "收到的邮件只留存，不执行转发与回调"
+                                                    }
+                                                >
+                                                    {row.forward_enabled === 1 ? "转发：开" : "转发：关"}
+                                                </Badge>
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -424,7 +473,8 @@ const MailboxPage = () => {
                                                     variant="outline"
                                                     aria-label="上移"
                                                     title="上移"
-                                                    disabled={pagedBoxes[0]?.id === row.id}
+                                                    // 原: disabled={pagedBoxes[0]?.id === row.id}
+                                                    disabled={moving || orderedBoxes[0]?.id === row.id}
                                                     onClick={() => move(row, "up")}
                                                 >
                                                     <ArrowUp className="size-3.5" />
@@ -434,7 +484,8 @@ const MailboxPage = () => {
                                                     variant="outline"
                                                     aria-label="下移"
                                                     title="下移"
-                                                    disabled={pagedBoxes[pagedBoxes.length - 1]?.id === row.id}
+                                                    // 原: disabled={pagedBoxes[pagedBoxes.length - 1]?.id === row.id}
+                                                    disabled={moving || orderedBoxes[orderedBoxes.length - 1]?.id === row.id}
                                                     onClick={() => move(row, "down")}
                                                 >
                                                     <ArrowDown className="size-3.5" />

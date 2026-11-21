@@ -93,7 +93,10 @@ const MailboxFormModal = (params: {
             setFormTls(true);
             setFormInterval(0);
             setFormNote("");
-            setFormForward(false);
+            // 原: setFormForward(false);
+            // 新建邮箱默认参与策略转发：开关对所有类型可见，默认打开更符合直觉，
+            // 不想外发的用户显式关掉即可
+            setFormForward(true);
         }
     }, [isOpen, editing]);
 
@@ -128,9 +131,9 @@ const MailboxFormModal = (params: {
             mailbox.sync_interval = Number(formInterval) || 0;
             if (formPassword) mailbox.password = formPassword;
         }
-        if (formType !== "catchall") {
-            mailbox.forward_enabled = formForward ? 1 : 0;
-        }
+        // 原: if (formType !== "catchall") { mailbox.forward_enabled = formForward ? 1 : 0; }
+        // 开关对所有类型一致提交，后端也不再对 catchall 强制写 1
+        mailbox.forward_enabled = formForward ? 1 : 0;
         return mailbox;
     }
 
@@ -325,17 +328,18 @@ const MailboxFormModal = (params: {
                         </div>
                     ) : null}
 
-                    {formType !== "catchall" && (
-                        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
-                            <div className="min-w-0">
-                                <Label htmlFor="mb-forward">参与策略转发</Label>
-                                    <p className="text-muted-foreground mt-0.5 text-xs">
-                                        默认导入邮件仅留存不外发；开启后才会命中策略转发。
-                                    </p>
-                            </div>
-                            <Switch id="mb-forward" checked={formForward} onCheckedChange={setFormForward} />
+                    {/* 原: {formType !== "catchall" && ( ... )}
+                        本地地址类型过去没有这个开关，后端却强制把 forward_enabled 写成 1，
+                        用户既看不到也关不掉。现在所有类型一视同仁。 */}
+                    <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                        <div className="min-w-0">
+                            <Label htmlFor="mb-forward">参与策略转发</Label>
+                            <p className="text-muted-foreground mt-0.5 text-xs">
+                                关闭后本邮箱收到的邮件只留存不外发，命中的转发与回调策略都不执行（定时归档不受影响）。
+                            </p>
                         </div>
-                    )}
+                        <Switch id="mb-forward" checked={formForward} onCheckedChange={setFormForward} />
+                    </div>
 
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="mb-name">显示名称（可选）</Label>

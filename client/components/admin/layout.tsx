@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom"
 
 import { DesktopSidebar, SidebarBody } from "@/client/components/admin/sidebar"
 import { Topbar } from "@/client/components/admin/topbar"
+import SecurityBanner from "@/client/components/security/SecurityBanner"
 import {
     Sheet,
     SheetContent,
@@ -30,6 +31,7 @@ export function AdminLayout() {
 
             <div className="flex flex-1 flex-col overflow-hidden">
                 <Topbar onOpenMobileNav={() => setMobileOpen(true)} />
+                <SecurityBanner />
                 <main className="bg-muted/30 flex-1 overflow-y-auto p-4 sm:p-6">
                     <Outlet />
                 </main>

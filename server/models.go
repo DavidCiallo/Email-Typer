@@ -149,6 +149,9 @@ type EmailRow struct {
 	Blocked     int             `json:"blocked"`
 	BlockedBy   string          `json:"blocked_by"`
 	BlockRule   string          `json:"block_rule"`
+	// 策略转发的结果（sent / partial / skipped / failed），空串表示未触发策略
+	ForwardStatus string `json:"forward_status"`
+	ForwardError  string `json:"forward_error"`
 	CreateTime  int64           `json:"create_time"`
 	UpdateTime  *int64          `json:"update_time"`
 	DeleteTime  *int64          `json:"delete_time"`
@@ -253,14 +256,24 @@ type GrantRow struct {
 }
 
 type SafetyRow struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"`
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	// 二期新增：判定不再由 type 单独决定，而是 action + match_field + match_mode 组合
+	Action     string `json:"action"`      // allow | block
+	MatchField string `json:"match_field"` // from | to | subject | content | any
+	MatchMode  string `json:"match_mode"`  // glob | keyword | regex | exact
+	Priority   int64  `json:"priority"`    // 数字小的先判，命中即短路
+	Enabled    int64  `json:"enabled"`     // 0 停用 / 1 启用
+	Scope      string `json:"scope"`       // "" = 全局；否则只对该邮箱生效
 	Value      string `json:"value"`
 	Note       string `json:"note"`
 	CreateTime int64  `json:"create_time"`
 	UpdateTime *int64 `json:"update_time"`
 	DeleteTime *int64 `json:"delete_time"`
 }
+
+// safetyCols 是 safety 表的列清单，查询与扫描必须严格对应。
+const safetyCols = `id, type, action, match_field, match_mode, priority, enabled, scope, value, note, create_time, update_time, delete_time`
 
 type SendLogRow struct {
 	ID          string          `json:"id"`
@@ -272,6 +285,9 @@ type SendLogRow struct {
 	Channel     string          `json:"channel"`
 	Error       string          `json:"error"`
 	Attachments json.RawMessage `json:"attachments"`
+	// 触发本次发送的策略与原始邮件，用于把一封邮件的多次外发归到一组
+	StrategyID  string          `json:"strategy_id"`
+	EmailID     string          `json:"email_id"`
 	CreateTime  int64           `json:"create_time"`
 	UpdateTime  *int64          `json:"update_time"`
 	DeleteTime  *int64          `json:"delete_time"`
@@ -285,7 +301,8 @@ func scanEmail(sc interface{ Scan(...any) error }) (*EmailRow, error) {
 	var atts []byte
 	err := sc.Scan(&e.ID, &e.EID, &e.From, &e.To, &e.Subject, &e.HTML, &e.Text, &e.Time,
 		&e.AccountID, &e.MessageID, &e.Source, &e.MailboxID, &e.Eml, &codes, &e.HasCode, &e.HasLinks,
-		&atts, &e.Blocked, &e.BlockedBy, &e.BlockRule, &e.CreateTime, &e.UpdateTime, &e.DeleteTime)
+		&atts, &e.Blocked, &e.BlockedBy, &e.BlockRule, &e.ForwardStatus, &e.ForwardError,
+		&e.CreateTime, &e.UpdateTime, &e.DeleteTime)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +368,8 @@ func scanGrant(sc interface{ Scan(...any) error }) (*GrantRow, error) {
 
 func scanSafety(sc interface{ Scan(...any) error }) (*SafetyRow, error) {
 	s := &SafetyRow{}
-	err := sc.Scan(&s.ID, &s.Type, &s.Value, &s.Note, &s.CreateTime, &s.UpdateTime, &s.DeleteTime)
+	err := sc.Scan(&s.ID, &s.Type, &s.Action, &s.MatchField, &s.MatchMode, &s.Priority, &s.Enabled,
+		&s.Scope, &s.Value, &s.Note, &s.CreateTime, &s.UpdateTime, &s.DeleteTime)
 	return s, err
 }
 
@@ -359,7 +377,7 @@ func scanSendLog(sc interface{ Scan(...any) error }) (*SendLogRow, error) {
 	s := &SendLogRow{}
 	var atts []byte
 	err := sc.Scan(&s.ID, &s.From, &s.To, &s.Subject, &s.HTML, &s.Status, &s.Channel, &s.Error,
-		&atts, &s.CreateTime, &s.UpdateTime, &s.DeleteTime)
+		&atts, &s.StrategyID, &s.EmailID, &s.CreateTime, &s.UpdateTime, &s.DeleteTime)
 	if err != nil {
 		return nil, err
 	}
@@ -445,11 +463,35 @@ func insertGrantRow(tx *sql.Tx, row map[string]any) error {
 }
 
 func insertSafetyRow(tx *sql.Tx, row map[string]any) error {
-	_, err := tx.Exec(`INSERT OR REPLACE INTO safety (id, type, value, note, create_time, update_time, delete_time)
-		VALUES (?,?,?,?,?,?,?)`,
-		rowID(row), asStr(row["type"]), asStr(row["value"]), asStr(row["note"]),
+	// 导入/恢复也走这里，必须让内存规则缓存失效，否则新导入的规则不生效
+	safetyInvalidate()
+	// 老备份文件里没有这四列，按 type 推导默认值，保证导入后语义不变
+	action, field, mode, prio := safetyDefaults(asStr(row["type"]))
+	if n := asInt(row["priority"]); n != 0 {
+		prio = int64(n)
+	}
+	_, err := tx.Exec(`INSERT OR REPLACE INTO safety (`+safetyCols+`)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		rowID(row), asStr(row["type"]),
+		orDefault(asStr(row["action"]), action),
+		orDefault(asStr(row["match_field"]), field),
+		orDefault(asStr(row["match_mode"]), mode),
+		prio, 1, asStr(row["scope"]),
+		asStr(row["value"]), asStr(row["note"]),
 		asInt(orDefaultAny(row["create_time"], nowMillis())), rowTimePtr(row, "update_time"), rowTimePtr(row, "delete_time"))
 	return err
+}
+
+// safetyDefaults 把旧的三分类映射到新的四维模型（与数据库迁移里的映射保持一致）。
+func safetyDefaults(typ string) (action, field, mode string, priority int64) {
+	switch typ {
+	case "whitelist":
+		return "allow", "from", "glob", 10
+	case "sensitive_word":
+		return "block", "content", "keyword", 80
+	default: // blacklist
+		return "block", "any", "glob", 50
+	}
 }
 
 func insertSendLogRow(tx *sql.Tx, row map[string]any) error {

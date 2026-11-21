@@ -112,18 +112,74 @@ func mailboxLoadAll(mailboxType string) []*MailboxRow {
 // mailboxMove swaps a mailbox with its neighbour in the same domain. Neighbours
 // come from the ordering the UI shows, so up/down always matches what the user
 // sees; the two sort_order values are then exchanged.
+// ===== 原实现（改造前，保留备查 2026-11-17）=====
+// 只支持「和相邻行交换 sort_order」。问题：交换会让 sort_order 单调递减、无下限，
+// 且必须先扫一遍是否撞值；前端在筛选状态下算出的相邻行也不是真实的相邻行。
+// func mailboxMove(c *Ctx) (any, error) {
+// 	if err := requireAdmin(c.Auth); err != nil {
+// 		return nil, err
+// 	}
+// 	var req struct {
+// 		ID        string `json:"id"`
+// 		Direction string `json:"direction"`
+// 	}
+// 	if err := c.Decode(&req); err != nil {
+// 		return nil, throwErr("Invalid request")
+// 	}
+// 	if req.Direction != "up" && req.Direction != "down" {
+// 		return nil, throwErr("Invalid direction")
+// 	}
+// 	box := mailboxFindByID(req.ID)
+// 	if box == nil {
+// 		return nil, throwErr("Mailbox not found")
+// 	}
+// 	peers := []*MailboxRow{}
+// 	for _, m := range mailboxLoadAll("") {
+// 		if m.Domain == box.Domain {
+// 			peers = append(peers, m)
+// 		}
+// 	}
+// 	at := -1
+// 	for i, m := range peers {
+// 		if m.ID == box.ID {
+// 			at = i
+// 			break
+// 		}
+// 	}
+// 	if at == -1 {
+// 		return nil, throwErr("Mailbox not found")
+// 	}
+// 	swap := at - 1
+// 	if req.Direction == "down" {
+// 		swap = at + 1
+// 	}
+// 	if swap < 0 || swap >= len(peers) {
+// 		return mailboxToDTO(box), nil
+// 	}
+// 	other := peers[swap]
+// 	tx, err := db.Begin()
+// 	... 交换 sort_order ...
+// }
+// ===== 改造后 =====
+// 新语义：把这一行移动到 before_id 之前（before_id 为空 = 移到末尾）。
+// 每次移动都按 0,10,20… 重排整个域，sort_order 因此永远有界；
+// 前端负责用「全量同域列表」算出 before_id，所以筛选状态下也不会错位。
 func mailboxMove(c *Ctx) (any, error) {
 	if err := requireAdmin(c.Auth); err != nil {
 		return nil, err
 	}
 	var req struct {
 		ID        string `json:"id"`
-		Direction string `json:"direction"`
+		BeforeID  string `json:"before_id"`
+		Direction string `json:"direction"` // 旧前端仍在用，保留兼容
 	}
 	if err := c.Decode(&req); err != nil {
 		return nil, throwErr("Invalid request")
 	}
-	if req.Direction != "up" && req.Direction != "down" {
+	// before_id 只要出现在请求里（哪怕是空串，表示移到末尾）就走新语义；
+	// 完全没有这个字段才说明是旧前端，退回 direction。
+	_, hasBefore := c.Body["before_id"]
+	if !hasBefore && req.Direction != "up" && req.Direction != "down" {
 		return nil, throwErr("Invalid direction")
 	}
 	box := mailboxFindByID(req.ID)
@@ -146,35 +202,63 @@ func mailboxMove(c *Ctx) (any, error) {
 	if at == -1 {
 		return nil, throwErr("Mailbox not found")
 	}
-	swap := at - 1
-	if req.Direction == "down" {
-		swap = at + 1
+	// rest = 同域其它行，保持原顺序
+	rest := make([]*MailboxRow, 0, len(peers))
+	for _, m := range peers {
+		if m.ID != box.ID {
+			rest = append(rest, m)
+		}
 	}
-	if swap < 0 || swap >= len(peers) {
-		return mailboxToDTO(box), nil
+
+	insertAt := len(rest)
+	if hasBefore {
+		if req.BeforeID != "" {
+			found := false
+			for i, m := range rest {
+				if m.ID == req.BeforeID {
+					insertAt = i
+					found = true
+					break
+				}
+			}
+			if !found {
+				insertAt = len(rest) // 目标已不存在 → 落到末尾，不报错
+			}
+		}
+	} else {
+		// 旧语义换算成插入位置
+		if req.Direction == "up" {
+			if at == 0 {
+				return mailboxToDTO(box), nil
+			}
+			insertAt = at - 1
+		} else {
+			if at == len(peers)-1 {
+				return mailboxToDTO(box), nil
+			}
+			insertAt = at + 1
+		}
 	}
-	other := peers[swap]
-	// Pre-existing rows all share sort_order 0, so swapping the stored values
-	// would drop the moved row past every other tie. Renumber the domain first,
-	// once, to give each row a distinct slot.
+
+	ordered := make([]*MailboxRow, 0, len(peers))
+	ordered = append(ordered, rest[:insertAt]...)
+	ordered = append(ordered, box)
+	ordered = append(ordered, rest[insertAt:]...)
+
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, throwErr("Save failed")
 	}
 	defer tx.Rollback()
-	if box.SortOrder == other.SortOrder {
-		for i, m := range peers {
-			if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, i, m.ID); err != nil {
-				return nil, throwErr("Save failed")
-			}
-			m.SortOrder = i
+	// 统一重排成 0,10,20…：既落定本次顺序，也顺手把历史遗留的递减值归一化
+	for i, m := range ordered {
+		slot := i * 10
+		if m.SortOrder == slot {
+			continue
 		}
-	}
-	if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, other.SortOrder, box.ID); err != nil {
-		return nil, throwErr("Save failed")
-	}
-	if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, box.SortOrder, other.ID); err != nil {
-		return nil, throwErr("Save failed")
+		if _, err := tx.Exec(`UPDATE mailboxes SET sort_order = ? WHERE id = ?`, slot, m.ID); err != nil {
+			return nil, throwErr("Save failed")
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, throwErr("Save failed")
@@ -404,7 +488,9 @@ func mailboxSave(body mailboxSaveBody, id string) (*MailboxRow, error) {
 			imap_host = ?, imap_port = ?, imap_tls = ?, sync_interval = ?, update_time = ?`
 		args := []any{name, body.Type, body.Address, domainLower, localPart,
 			imapProviderOrEmpty(body.Type, body.Provider), body.Note,
-			bool01(body.Type == "catchall" || body.ForwardEnable != 0),
+			// 原: bool01(body.Type == "catchall" || body.ForwardEnable != 0),
+			// catchall 不再被强制打开，开关对所有类型一视同仁
+			bool01(body.ForwardEnable != 0),
 			imapHost, imapPort, imapTLS, syncInterval, nowMillis()}
 		// IMAP 编辑未填新密码时保留旧凭据；切到非 imap 类型则清空
 		if body.Type == "imap" && credential == "" {
@@ -426,7 +512,8 @@ func mailboxSave(body mailboxSaveBody, id string) (*MailboxRow, error) {
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'active', ?, '', 0, 0, ?, ?, ?)`,
 		newID, name, body.Type, body.Address, domainLower, localPart,
 		imapProviderOrEmpty(body.Type, body.Provider), imapHost, imapPort, imapTLS, syncInterval,
-		credential, bool01(body.Type == "catchall" || body.ForwardEnable != 0), body.Note,
+		credential, bool01(body.ForwardEnable != 0), body.Note,
+		// 原: credential, bool01(body.Type == "catchall" || body.ForwardEnable != 0), body.Note,
 		mailboxNewSortOrder(domainLower), nowMillis())
 	if err != nil {
 		return nil, throwErr("Save failed")
