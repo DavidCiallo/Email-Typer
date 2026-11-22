@@ -63,7 +63,7 @@ func warmIndexedEml() {
 	fmt.Printf("[EmailService] warmed %d indexed eml paths\n", n)
 }
 
-const emailCols = `id, eid, from_addr, to_addr, subject, html, text, time, account_id, message_id, source, mailbox_id, eml, codes, has_code, has_links, attachments, blocked, blocked_by, block_rule, create_time, update_time, delete_time`
+const emailCols = `id, eid, from_addr, to_addr, subject, html, text, time, account_id, message_id, source, mailbox_id, eml, codes, has_code, has_links, attachments, blocked, blocked_by, block_rule, forward_status, forward_error, create_time, update_time, delete_time`
 
 func emailFindByID(id string) *EmailRow {
 	row := db.QueryRow(`SELECT `+emailCols+` FROM emails WHERE id = ? AND delete_time IS NULL`, id)
@@ -172,7 +172,10 @@ func ingestBufferInner(raw []byte, emlPath string) *EmailRow {
 	if emailDedupExists(parsed) {
 		return nil
 	}
-	verdict := safetyEvaluate(parsed.From, parsed.To, parsed.Subject, parsed.HTML, parsed.Text)
+	// scope 生效的前提是先知道这封邮件属于哪个邮箱：推送 / imap 来源在解析前
+	// 就带上了 X-CFRS-Mailbox，maildir 来源没有，这里按收件地址反查一次
+	verdict := safetyEvaluate(parsed.From, parsed.To, parsed.Subject, parsed.HTML, parsed.Text,
+		safetyScopeFor(parsed.MailboxID, parsed.To))
 	if verdict.blocked {
 		log.Printf(`[Safety] Blocked email from "%s" subject "%s" (%s: %s)`, parsed.From, parsed.Subject, verdict.blockedBy, verdict.rule)
 	}
@@ -247,9 +250,13 @@ func nullOrNil(v any) any {
 func finalizeIngest(stored *EmailRow, blocked bool, body [2]string) {
 	if !blocked {
 		go func() {
-			if err := strategyApply(stored, body); err != nil {
-				log.Printf("[EmailService] Strategy apply failed: %v", err)
-			}
+			// ===== 原实现（改造前，保留备查 2026-11-17）=====
+			// 只处理第一条命中的策略，失败只写一行日志，界面完全看不到。
+			// if err := strategyApply(stored, body); err != nil {
+			// 	log.Printf("[EmailService] Strategy apply failed: %v", err)
+			// }
+			// ===== 改造后 =====
+			recordStrategyResults(stored, strategyApplyAll(stored, body))
 		}()
 	}
 	broadcastWsMessage(map[string]any{
@@ -261,19 +268,105 @@ func finalizeIngest(stored *EmailRow, blocked bool, body [2]string) {
 	})
 }
 
+// ===== 原实现（改造前，保留备查 2026-11-17）=====
+// maildir 来源直接 return true，绕过邮箱上的「参与策略转发」开关：本地收信
+// 目录里的邮件不论开关怎么设都会外发。
+// func emailShouldForward(stored *EmailRow) bool {
+// 	if stored.Source == "api" || stored.Source == "imap" {
+// 		if stored.MailboxID == "" {
+// 			return false
+// 		}
+// 		row := db.QueryRow(`SELECT forward_enabled FROM mailboxes WHERE id = ? AND delete_time IS NULL`, stored.MailboxID)
+// 		var fw int
+// 		if row.Scan(&fw) != nil {
+// 			return false
+// 		}
+// 		return fw == 1
+// 	}
+// 	return true
+// }
+// ===== 改造后 =====
+// emailShouldForward 对三种来源统一按邮箱开关判断。api / imap 来源必须挂在
+// 邮箱上；maildir 来源没有 mailbox_id，按收件地址反查。
+// 查不到对应邮箱时保持各来源的历史默认值：本地目录来源默认放行，其余默认不放行。
 func emailShouldForward(stored *EmailRow) bool {
-	if stored.Source == "api" || stored.Source == "imap" {
-		if stored.MailboxID == "" {
-			return false
-		}
-		row := db.QueryRow(`SELECT forward_enabled FROM mailboxes WHERE id = ? AND delete_time IS NULL`, stored.MailboxID)
-		var fw int
-		if row.Scan(&fw) != nil {
-			return false
-		}
-		return fw == 1
+	byAddress := stored.Source != "api" && stored.Source != "imap"
+	var fw int
+	var err error
+	switch {
+	case stored.MailboxID != "":
+		err = db.QueryRow(`SELECT forward_enabled FROM mailboxes WHERE id = ? AND delete_time IS NULL`,
+			stored.MailboxID).Scan(&fw)
+	case byAddress:
+		err = db.QueryRow(`SELECT forward_enabled FROM mailboxes WHERE address = ? AND delete_time IS NULL LIMIT 1`,
+			stored.To).Scan(&fw)
+	default:
+		// api / imap 必须挂在邮箱上，否则无从判断开关
+		return false
 	}
-	return true
+	if err != nil {
+		return byAddress
+	}
+	return fw == 1
+}
+
+// recordStrategyResults 把所有策略的执行结果落地：外发类策略每条写一条发送记录，
+// 邮件本身记一个汇总状态，界面据此标出「转发失败」。
+// 归档只进 strategy_runs 台账——它没有发送行为，不该出现在发件历史里，也不该
+// 影响邮件的「转发状态」。
+func recordStrategyResults(email *EmailRow, results []strategyResult) {
+	outbound := make([]strategyResult, 0, len(results))
+	for _, r := range results {
+		if r.Action != "archive" {
+			outbound = append(outbound, r)
+		}
+	}
+	if len(outbound) == 0 {
+		return
+	}
+	// 汇总状态取最严重的一档：failed > partial > skipped > sent
+	rank := map[string]int{"sent": 0, "skipped": 1, "partial": 2, "failed": 3}
+	status := "sent"
+	best := 0
+	reasons := []string{}
+	seenReason := map[string]bool{}
+	for _, r := range outbound {
+		if v, ok := rank[r.Status]; ok && v > best {
+			best = v
+			status = r.Status
+		}
+		if r.Reason != "" && !seenReason[r.Reason] {
+			seenReason[r.Reason] = true
+			reasons = append(reasons, r.Reason)
+		}
+		writeStrategySendLog(email, r)
+	}
+	if _, err := db.Exec(`UPDATE emails SET forward_status = ?, forward_error = ?, update_time = ? WHERE id = ?`,
+		status, strings.Join(reasons, "；"), nowMillis(), email.ID); err != nil {
+		log.Printf("[EmailService] record forward status failed for %s: %v", email.ID, err)
+	}
+}
+
+func writeStrategySendLog(email *EmailRow, r strategyResult) {
+	if r.NoLog {
+		return
+	}
+	to := strings.TrimSpace(r.ToAddr)
+	if to == "" {
+		to = email.To
+	}
+	// 原: from_addr 直接取 email.From（原始发件人），转发记录里因此显示的是对方地址
+	from := strings.TrimSpace(r.FromAddr)
+	if from == "" {
+		from = email.From
+	}
+	_, err := db.Exec(`INSERT INTO sendlogs (id, from_addr, to_addr, subject, html, status, channel, error,
+		attachments, strategy_id, email_id, create_time)
+		VALUES (?,?,?,?,'',?,?,?,NULL,?,?,?)`,
+		nanoID(6), from, to, email.Subject, r.Status, "forward", r.Reason, r.StrategyID, email.ID, nowMillis())
+	if err != nil {
+		log.Printf("[EmailService] write sendlog failed for %s: %v", email.ID, err)
+	}
 }
 
 // readBody hydrates the body from the archived eml, falling back to the inline

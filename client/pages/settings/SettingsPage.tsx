@@ -24,12 +24,22 @@ const FIELD_LABELS: Record<string, string> = {
     attachment_max_size: "附件大小上限（字节）",
     namail_url: "namail 地址（主动收信）",
     namail_password: "namail 密码（主动收信）",
+    forward_from_domain: "转发发信域名（留空取第一个 Resend 域名）",
+    forward_max_per_mail: "单封邮件外发上限（1~20，默认 10）",
+    forward_warn_at: "命中策略数警告阈值（超过则弹警告，默认 5）",
+    forward_lock_at: "命中策略数熔断阈值（超过则暂停转发，默认 10）",
+    public_base_url: "对外访问地址（用于生成附件下载链接，如 https://mail.example.com）",
+    attachment_link_ttl_hours: "附件下载链接有效期（小时，默认 168）",
+    forward_attach_total_mb: "转发附件总上限（MB，默认 20）",
+    forward_attach_single_mb: "转发单个附件上限（MB，默认 10）",
 };
 
 /** Display order & section grouping for known keys; unknown keys go to "其他". */
 const SECTIONS: { title: string; keys: string[] }[] = [
     { title: "注册与域名", keys: ["allow_register", "allowed_domains", "client_url"] },
-    { title: "邮件发送", keys: ["resend_api_key", "resend_api_keys", "allowed_from_domains"] },
+    { title: "邮件发送", keys: ["resend_api_key", "resend_api_keys", "allowed_from_domains", "forward_from_domain", "forward_max_per_mail"] },
+    { title: "转发安全", keys: ["forward_warn_at", "forward_lock_at"] },
+    { title: "附件与外链", keys: ["public_base_url", "attachment_link_ttl_hours", "forward_attach_total_mb", "forward_attach_single_mb"] },
     { title: "服务器", keys: ["email_receive_api_key", "push_rate_limit_per_min", "maildir_path", "mailbox_sync_interval", "attachment_max_size"] },
     { title: "主动收信", keys: ["namail_url", "namail_password"] },
 ];

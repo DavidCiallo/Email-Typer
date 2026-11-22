@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS emails (
 	codes TEXT NOT NULL DEFAULT '[]', has_code INTEGER NOT NULL DEFAULT 0, has_links INTEGER NOT NULL DEFAULT 0,
 	attachments TEXT, blocked INTEGER NOT NULL DEFAULT 0, blocked_by TEXT NOT NULL DEFAULT '', block_rule TEXT NOT NULL DEFAULT '',
 	archive_at INTEGER NOT NULL DEFAULT 0,
+	forward_status TEXT NOT NULL DEFAULT '', forward_error TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
 CREATE INDEX IF NOT EXISTS idx_emails_msgid ON emails(message_id);
 CREATE INDEX IF NOT EXISTS idx_emails_fp ON emails(from_addr, to_addr, subject, time);
@@ -88,7 +90,31 @@ CREATE TABLE IF NOT EXISTS sendlogs (
 	id TEXT PRIMARY KEY, from_addr TEXT NOT NULL DEFAULT '', to_addr TEXT NOT NULL DEFAULT '',
 	subject TEXT NOT NULL DEFAULT '', html TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
 	channel TEXT NOT NULL DEFAULT 'external', error TEXT NOT NULL DEFAULT '', attachments TEXT,
+	strategy_id TEXT NOT NULL DEFAULT '', email_id TEXT NOT NULL DEFAULT '',
 	create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER, delete_time INTEGER);
+
+-- 每一封邮件 × 每一条策略只允许执行一次，重复投递或重启重扫都不会重复外发。
+CREATE TABLE IF NOT EXISTS strategy_runs (
+	id TEXT PRIMARY KEY, email_id TEXT NOT NULL DEFAULT '', strategy_id TEXT NOT NULL DEFAULT '',
+	action TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'running',
+	reason TEXT NOT NULL DEFAULT '', create_time INTEGER NOT NULL DEFAULT 0, update_time INTEGER);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_email_strategy ON strategy_runs(email_id, strategy_id);
+CREATE INDEX IF NOT EXISTS idx_runs_email ON strategy_runs(email_id);
+
+-- 安全事件：既是审计日志，也是熔断锁状态的唯一真值来源。
+CREATE TABLE IF NOT EXISTS security_events (
+	id TEXT PRIMARY KEY,
+	kind TEXT NOT NULL DEFAULT '',
+	severity TEXT NOT NULL DEFAULT '',
+	email_id TEXT NOT NULL DEFAULT '',
+	hit_count INTEGER NOT NULL DEFAULT 0,
+	send_count INTEGER NOT NULL DEFAULT 0,
+	detail TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'open',
+	acked_by TEXT NOT NULL DEFAULT '',
+	acked_at INTEGER NOT NULL DEFAULT 0,
+	create_time INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_security_status ON security_events(status, kind);
 `
 
 func openDB() error {
@@ -109,7 +135,53 @@ func openDB() error {
 			return fmt.Errorf("migration %q: %w", stmt, err)
 		}
 	}
+	// 数据回填类迁移放在这里：它们必须只跑一次，所以用 meta 做标记，
+	// 不能塞进上面那个每次启动都会执行的 migrations 切片。
+	migrateCatchallForward()
+	migrateSafetyRules()
 	return nil
+}
+
+// migrateSafetyRules 把旧的三分类映射到新的四维模型，只跑一次。
+// 映射与 models.go 的 safetyDefaults 必须一致，否则「新库导入老备份」与
+// 「老库升级」会得到两套语义。
+func migrateSafetyRules() {
+	if metaGet("migration_safety_v2") != "" {
+		return
+	}
+	statements := []string{
+		// 白名单：只判发件人，最先判
+		`UPDATE safety SET action = 'allow', match_field = 'from', match_mode = 'glob', priority = 10
+			WHERE type = 'whitelist' AND action = ''`,
+		// 黑名单：发件人 + 收件人都判
+		`UPDATE safety SET action = 'block', match_field = 'any', match_mode = 'glob', priority = 50
+			WHERE type = 'blacklist' AND action = ''`,
+		// 敏感词：旧语义是「主题 或 正文」，用 content 精确表达，不用 any（any 会误含地址）
+		`UPDATE safety SET action = 'block', match_field = 'content', match_mode = 'keyword', priority = 80
+			WHERE type = 'sensitive_word' AND action = ''`,
+		// 兜底：万一有未知 type，按阻止处理，不让它变成永远不匹配的幽灵规则
+		`UPDATE safety SET action = 'block', match_field = 'any', match_mode = 'glob', priority = 100
+			WHERE action = ''`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			log.Printf("[Migration] safety v2 failed: %v", err)
+			return
+		}
+	}
+	metaSet("migration_safety_v2", "1")
+}
+
+// migrateCatchallForward 是改法 Y 的回填：旧代码在 mailboxSave / mailboxUpdate
+// 里把 catchall 的 forward_enabled 强制写成 1，界面上却不显示这个开关。
+// 新代码不再强制，这里把历史上被隐式打开的本地邮箱显式落库，避免升级后转发突然停止。
+func migrateCatchallForward() {
+	if metaGet("migration_catchall_forward_v1") != "" {
+		return
+	}
+	db.Exec(`UPDATE mailboxes SET forward_enabled = 1, update_time = ?
+		WHERE type = 'catchall' AND delete_time IS NULL AND forward_enabled = 0`, nowMillis())
+	metaSet("migration_catchall_forward_v1", "1")
 }
 
 var migrations = []string{
@@ -129,6 +201,31 @@ var migrations = []string{
 	`CREATE INDEX IF NOT EXISTS idx_emails_archive_at ON emails(archive_at)`,
 	// scheduled tasks are folded into strategies; the table and its rows are gone
 	`DROP TABLE IF EXISTS autotasks`,
+	// ---------- P2 转发改造（2026-11-17）----------
+	// 转发结果落到邮件本身，让列表能直接标出失败原因
+	`ALTER TABLE emails ADD COLUMN forward_status TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE emails ADD COLUMN forward_error TEXT NOT NULL DEFAULT ''`,
+	// 发送记录挂上来源策略与原始邮件，一封信触发多次外发时能归组
+	`ALTER TABLE sendlogs ADD COLUMN strategy_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sendlogs ADD COLUMN email_id TEXT NOT NULL DEFAULT ''`,
+	// 索引必须建在列之后：老库执行到这里才有 email_id 这一列
+	`CREATE INDEX IF NOT EXISTS idx_sendlogs_email ON sendlogs(email_id)`,
+	// 策略按创建顺序执行，顺序必须可预测（日志与截断都靠它）
+	`CREATE INDEX IF NOT EXISTS idx_strategies_live ON strategies(delete_time, enabled, create_time)`,
+	// 邮箱列表按域内 sort_order 排序，原来没有索引，每次全表扫 + 排序
+	`CREATE INDEX IF NOT EXISTS idx_mailboxes_sort ON mailboxes(domain, sort_order)`,
+	// ---------- P3 规则引擎（2026-11-17）----------
+	// 判定不再由 type 单独决定：action（放行/阻止）+ match_field（判哪个字段）
+	// + match_mode（怎么匹配）+ priority（谁先判）自由组合
+	`ALTER TABLE safety ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE safety ADD COLUMN priority INTEGER NOT NULL DEFAULT 100`,
+	`ALTER TABLE safety ADD COLUMN action TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE safety ADD COLUMN match_field TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE safety ADD COLUMN match_mode TEXT NOT NULL DEFAULT 'glob'`,
+	// scope 留空 = 全局规则；填邮箱 id = 只对该邮箱收到的邮件生效
+	`ALTER TABLE safety ADD COLUMN scope TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS idx_safety_priority ON safety(priority)`,
+	`CREATE INDEX IF NOT EXISTS idx_safety_scope ON safety(scope)`,
 }
 
 func metaGet(k string) string {

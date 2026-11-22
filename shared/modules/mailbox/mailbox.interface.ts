@@ -273,14 +273,20 @@ export class MailboxProvidersResponse implements BaseResponse<{ presets: Provide
 export class MailboxMoveRequest implements BaseRequest {
     public auth?: string;
     public id: string;
-    public direction: "up" | "down";
+    /** 移动到这一行之前；空串表示移到同域末尾 */
+    public before_id?: string;
+    /** 旧协议，仅在没传 before_id 时生效 */
+    public direction?: "up" | "down";
 
     constructor(origin: Partial<MailboxMoveRequest>) {
         if (!origin.id) throw new Error("id is required");
-        if (origin.direction !== "up" && origin.direction !== "down") throw new Error("direction must be up or down");
+        if (origin.before_id === undefined && origin.direction !== "up" && origin.direction !== "down") {
+            throw new Error("before_id or direction is required");
+        }
         origin.auth && (this.auth = origin.auth);
         this.id = origin.id;
-        this.direction = origin.direction;
+        if (origin.before_id !== undefined) this.before_id = origin.before_id;
+        if (origin.direction) this.direction = origin.direction;
     }
     static self(unsafe: any) {
         return new MailboxMoveRequest(unsafe);

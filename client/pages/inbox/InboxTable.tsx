@@ -12,6 +12,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Paperclip } from "lucide-react";
+import ForwardBadge from "./ForwardBadge";
 
 function formatTime(ts: number): string {
     const d = new Date(ts);
@@ -169,6 +170,7 @@ const InboxTable = (params: {
                                                 拦截·{blockLabel(email.blocked_by)}
                                             </Badge>
                                         )}
+                                        <ForwardBadge email={email} />
                                         <div className="truncate" title={email.subject}>{email.subject}</div>
                                         {!!email.has_attachments && (
                                             <Paperclip className="text-muted-foreground size-3.5 shrink-0" aria-label="含附件" />

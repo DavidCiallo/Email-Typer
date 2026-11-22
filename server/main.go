@@ -27,6 +27,10 @@ func registerRoutes() {
 	apiHandlers["/api/email/send-log/list"] = sendLogList
 	apiHandlers["/api/email/send-log/update"] = sendLogUpdate
 	apiHandlers["/api/email/attachment"] = emailAttachment
+	// 签名下载：收件方在系统外，无鉴权，靠签名 + 过期时间保护
+	apiHandlers["/api/attachment/download"] = attachmentDownloadSigned
+	// 「重新转发」：把当时没送达的附件挑几个补发
+	apiHandlers["/api/email/forward-again"] = emailForwardAgain
 
 	apiHandlers["/api/strategy/list"] = strategyListHandler
 	apiHandlers["/api/strategy/save"] = strategySaveHandler
@@ -66,6 +70,11 @@ func registerRoutes() {
 	apiHandlers["/api/mailbox/grant-revoke"] = mailboxGrantRevoke
 	apiHandlers["/api/mailbox/grant-list"] = mailboxGrantList
 	apiHandlers["/api/mailbox/tauth-info"] = mailboxTauthInfo
+
+	// 安全熔断：首次偏离「只改现有接口」的约定，因为人工解锁必须有独立入口
+	apiHandlers["/api/security/events"] = securityEventsHandler
+	apiHandlers["/api/security/lock-status"] = securityLockStatusHandler
+	apiHandlers["/api/security/unlock"] = securityUnlockHandler
 }
 
 func main() {
@@ -82,6 +91,7 @@ func main() {
 		log.Fatalf("JSONL migration failed: %v", err)
 	}
 	settingsLoad()
+	securityInit()
 
 	// default admin from env (same as the Bun server's initialize)
 	if name, email, password := envStr("ADMIN_NAME", ""), envStr("ADMIN_EMAIL", ""), envStr("ADMIN_PASSWORD", ""); name != "" && email != "" && password != "" {

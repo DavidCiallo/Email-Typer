@@ -199,12 +199,15 @@ func emailList(c *Ctx) (any, error) {
 			continue
 		}
 		hasAtt, attCount := attachmentStats(e.Attachments)
+		// 原: 列表 DTO 没有 forward_status / forward_error，收件箱的「转发失败」
+		// 徽标永远拿不到数据，改造后新增的两个字段在界面上等于不存在。
 		list = append(list, map[string]any{
 			"id": e.ID, "eid": e.EID, "from": e.From, "to": e.To, "subject": e.Subject,
 			"codes": e.Codes, "time": e.Time, "account_id": e.AccountID,
 			"blocked": e.Blocked, "blocked_by": e.BlockedBy, "block_rule": e.BlockRule,
 			"message_id": e.MessageID, "source": orDefault(e.Source, "maildir"),
 			"mailbox_id": e.MailboxID, "has_attachments": hasAtt, "attachment_count": attCount,
+			"forward_status": e.ForwardStatus, "forward_error": e.ForwardError,
 		})
 	}
 
@@ -272,6 +275,8 @@ func emailDetail(c *Ctx) (any, error) {
 		"eml": data.Eml, "codes": data.Codes, "has_code": data.HasCode, "has_links": data.HasLinks,
 		"attachments": jsonOrNullRaw(data.Attachments), "blocked": data.Blocked,
 		"blocked_by": data.BlockedBy, "block_rule": data.BlockRule,
+		// 原: 详情里也缺这两个字段，用户点开邮件看不到「为什么转发失败」
+		"forward_status": data.ForwardStatus, "forward_error": data.ForwardError,
 		"create_time": data.CreateTime, "update_time": data.UpdateTime, "delete_time": data.DeleteTime,
 	}, nil
 }
@@ -521,6 +526,8 @@ func sendLogList(c *Ctx) (any, error) {
 		list = append(list, map[string]any{
 			"id": s.ID, "from": s.From, "to": s.To, "subject": s.Subject, "html": s.HTML,
 			"status": s.Status, "channel": s.Channel, "error": s.Error,
+			// 原: 没有 email_id / strategy_id，「重新转发」无从定位原始邮件
+			"email_id": s.EmailID, "strategy_id": s.StrategyID,
 			"attachments": atts, "create_time": s.CreateTime, "update_time": s.UpdateTime, "delete_time": s.DeleteTime,
 		})
 	}

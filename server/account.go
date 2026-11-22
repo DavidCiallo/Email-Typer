@@ -185,6 +185,16 @@ func strategySaveHandler(c *Ctx) (any, error) {
 	if s.Action == "send" && strings.TrimSpace(s.ForwardTo) == "" {
 		return nil, throwErr("请填写转发邮箱")
 	}
+	// 护栏 3-②：转发目标指向本系统内的邮箱会形成环路（转发 → 收信 → 再转发）
+	if s.Action == "send" {
+		if target := strings.ToLower(bareAddress(strings.TrimSpace(s.ForwardTo))); target != "" {
+			var exists string
+			if err := db.QueryRow(`SELECT id FROM mailboxes WHERE lower(address) = ? AND delete_time IS NULL LIMIT 1`,
+				target).Scan(&exists); err == nil {
+				return nil, throwErr("转发目标不能是本系统内的邮箱（会造成转发环路）")
+			}
+		}
+	}
 	if s.Action == "archive" && s.ArchiveAfterHours <= 0 {
 		return nil, throwErr("请填写归档延迟小时数（大于 0）")
 	}

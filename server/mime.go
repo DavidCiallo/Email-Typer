@@ -105,6 +105,10 @@ func decodeMimeHeader(value string) string {
 // ---------- structure ----------
 
 func splitHeaderBody(buf []byte) (map[string]string, []byte) {
+	// 有的编辑器保存 .eml 时会带上 UTF-8 BOM，BOM 会粘在第一个头字段名上，
+	// 导致 "From" 变成 "\ufeffFrom" 而解析不到发件人 —— 转发就会因为「没有
+	// 发件人」失败。这里先剥掉。
+	buf = bytes.TrimPrefix(buf, []byte("\xef\xbb\xbf"))
 	crlf := bytes.Index(buf, []byte("\r\n\r\n"))
 	lf := bytes.Index(buf, []byte("\n\n"))
 	end, sepLen := len(buf), 0

@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -23,6 +25,19 @@ var settingKeys = map[string]string{
 	"maildir_path":            "MAILDIR_PATH",
 	"namail_url":              "NAMAIL_URL",
 	"namail_password":         "NAMAIL_PASSWORD",
+	// 转发发信域名：留空则自动取 resend_api_keys 里的第一个域名。
+	// 同一封邮件的所有转发共用这一个 From，与转发目标无关。
+	"forward_from_domain": "FORWARD_FROM_DOMAIN",
+	// 单封邮件外发次数上限（1~20），熔断误配与滥用，默认 10
+	"forward_max_per_mail": "FORWARD_MAX_PER_MAIL",
+	// 熔断阈值：命中策略数超过 warn_at 报警告，超过 lock_at 暂停全局转发
+	"forward_warn_at": "FORWARD_WARN_AT",
+	"forward_lock_at": "FORWARD_LOCK_AT",
+	// 附件投递：超出上限的附件改为签名外链，需要对外可访问的地址
+	"public_base_url":            "PUBLIC_BASE_URL",
+	"attachment_link_ttl_hours":  "ATTACHMENT_LINK_TTL_HOURS",
+	"forward_attach_total_mb":    "FORWARD_ATTACH_TOTAL_MB",
+	"forward_attach_single_mb":   "FORWARD_ATTACH_SINGLE_MB",
 }
 
 var (
@@ -62,6 +77,19 @@ func settingGet(key string) string {
 	settingsMu.RLock()
 	defer settingsMu.RUnlock()
 	return settingsCache[key]
+}
+
+// settingInt 读取整数配置，缺失或非数字时返回 fallback。
+func settingInt(key string, fallback int) int {
+	v := strings.TrimSpace(settingGet(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 type settingEntry struct {

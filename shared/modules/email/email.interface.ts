@@ -206,6 +206,37 @@ export class SendLogUpdateResponse implements BaseResponse<null> {
     }
 }
 
+// 重新转发：把当时没送达的附件挑几个补发一次
+export class EmailForwardAgainRequest implements BaseRequest {
+    public auth?: string;
+    public sendlog_id: string;
+    /** 原始邮件附件数组的下标，默认全不选 */
+    public attachments: number[];
+
+    constructor(origin: Partial<EmailForwardAgainRequest>) {
+        if (!origin.sendlog_id) throw new Error("sendlog_id is required");
+        if (!origin.attachments || origin.attachments.length === 0) throw new Error("attachments is required");
+        origin.auth && (this.auth = origin.auth);
+        this.sendlog_id = origin.sendlog_id;
+        this.attachments = origin.attachments;
+    }
+    static self(unsafe: EmailForwardAgainRequest) {
+        return new EmailForwardAgainRequest(unsafe);
+    }
+}
+
+export class EmailForwardAgainResponse implements BaseResponse<{ status: string; sent: number; to: string }> {
+    public success: boolean;
+    public message: string;
+    public data?: { status: string; sent: number; to: string };
+
+    constructor(origin: EmailForwardAgainResponse) {
+        this.success = origin.success;
+        this.message = origin.message;
+        this.data = origin.data;
+    }
+}
+
 // Receive email (external)
 export class EmailReceiveRequest implements BaseRequest {
     public auth?: string;
